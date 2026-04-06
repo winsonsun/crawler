@@ -37,7 +37,9 @@ async def main():
     parser.add_argument("actor", help="Name of the actor")
     args = parser.parse_args()
     
-    media_list_path = Path(f"actress/{args.actor}/media_list.json")
+    CRAW_DATA = os.environ.get("CRAW_DATA", "./data")
+    
+    media_list_path = Path(CRAW_DATA) / "actress" / args.actor / "media_list.json"
     if not media_list_path.exists():
         print(f"Media list for {args.actor} not found at {media_list_path}")
         return
@@ -57,7 +59,7 @@ async def main():
             scene_id = item.get("id")
             if not scene_id: continue
             
-            detail_path = Path(f"media_detail/{scene_id}/{scene_id}.json")
+            detail_path = Path(CRAW_DATA) / "media_detail" / scene_id / f"{scene_id}.json"
             if not detail_path.exists():
                 print(f"Missing detail JSON for {scene_id}")
                 continue
@@ -73,7 +75,7 @@ async def main():
                 if not cover_url.startswith('http'):
                     cover_url = "https://www.javbus.com" + cover_url
                 ext = _safe_ext_from_url(cover_url)
-                dest = Path(f"media_detail/{scene_id}/cover{ext}")
+                dest = Path(CRAW_DATA) / "media_detail" / scene_id / f"cover{ext}"
                 tasks.append(download_file(session, cover_url, dest))
         
         if tasks:

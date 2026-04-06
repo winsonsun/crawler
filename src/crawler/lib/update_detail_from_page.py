@@ -7,14 +7,18 @@ Usage:
 import argparse
 import json
 import shutil
+import os
 from pathlib import Path
+
+CRAW_DATA = os.environ.get("CRAW_DATA", "./data")
+DEFAULT_MEDIA_DIR = os.path.join(CRAW_DATA, "media_detail")
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--page', required=True)
     p.add_argument('--id', required=True)
-    p.add_argument('--media-dir', default='media_detail', help='Directory to save media details')
+    p.add_argument('--media-dir', default=DEFAULT_MEDIA_DIR, help='Directory to save media details')
     args = p.parse_args()
 
     page_path = Path(args.page)

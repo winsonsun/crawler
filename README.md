@@ -20,6 +20,13 @@ This project is a command-line tool for crawling, parsing, and downloading infor
     pip install -e .
     ```
 
+## Environment Variables
+
+The crawler uses the following environment variables to manage paths. If not set, they default to local directories.
+
+*   `CRAW_CONF`: The directory where configuration files (like `sites.json`, `active_scan.json`, `rename_policy.json`) are stored. Defaults to `./config`.
+*   `CRAW_DATA`: The directory where data files (like `list/`, `output/`) are stored. Defaults to `./data`.
+
 ## Handling Human Verification (Cloudflare)
 
 Modern websites often use services like Cloudflare to block bots. To bypass this, the crawler uses a persistent browser session where you have manually solved the "human verification" challenge once.
@@ -74,6 +81,19 @@ To crawl multiple scenes:
 ```bash
 crawler MIST-001 PPPE-378
 ```
+
+### Discovery Mode
+
+To discover new scenes on a site:
+```bash
+crawler --discover --site javbus --start-page 1 --pages 2
+```
+
+To filter discovery by an actor list (Note: `--ain-list` must be explicitly specified if used):
+```bash
+crawler --discover --site javbus --ain-list data/list/ain_list.json
+```
+
 ### Using an Input File
 ```bash
 crawler --input-file your_scenes.json
@@ -97,11 +117,18 @@ crawler -h
 ```
 ### Project Structure
 The project has the following directory structure:
-*   `src/crawler/`: Contains the main application source code.
+*   `config/`: Configuration files (managed by `CRAW_CONF`).
+    *   `sites.json`: The site configuration file.
+    *   `active_scan.json`: Cache for actor collection URLs.
+    *   `rename_policy.json`: Rules for the renaming tool.
+*   `data/`: Data storage (managed by `CRAW_DATA`).
+    *   `list/`: Actor/Category lists (e.g., `ain_list.json`).
+    *   `output/`: Generated files like `to-be-downloaded.txt`.
+    *   `media_detail/`: Parsed scene details (JSON).
+    *   `actress/`: Actor profiles and media lists.
+*   `src/crawler/`: Main application source code.
     *   `crawler.py`: The main script and orchestrator.
     *   `sites/`: Contains the site-specific parsers.
     *   `lib/`: Contains shared library code.
-*   `tests/`: Contains the unit tests.
+*   `tests/`: Unit and integration tests.
 *   `pyproject.toml`: The project definition and dependency list.
-*   `setup_profile.py`: The one-time script for creating a browser session.
-*   `sites.json`: The site configuration file.

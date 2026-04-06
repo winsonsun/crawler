@@ -14,7 +14,7 @@ import pprint
 import json
 import importlib
 from urllib.parse import quote_plus
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple, List
 import glob
 import random
 
@@ -23,12 +23,15 @@ from pathlib import Path
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from .lib.exceptions import SearchFailedError, PageParseError, DownloadHttpError, DownloadUrlError
 
-# Load site configurations from sites.json
+CRAW_CONF = os.environ.get("CRAW_CONF", "./config")
+CRAW_DATA = os.environ.get("CRAW_DATA", "./data")
+
+# Load site configurations from config/sites.json
 try:
-    with open('sites.json', 'r') as f:
+    with open(os.path.join(CRAW_CONF, 'sites.json'), 'r') as f:
         SITES_CONFIG = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError) as e:
-    print(f"Error loading sites.json: {e}", file=sys.stderr)
+    print(f"Error loading {os.path.join(CRAW_CONF, 'sites.json')}: {e}", file=sys.stderr)
     SITES_CONFIG = {}
 
 def load_parser(site_key: str) -> Callable:
@@ -61,7 +64,6 @@ def build_url(site_key: str, scene_name: str = None) -> str:
     return config["home_url"]
 
 from dataclasses import dataclass, field
-from typing import List
 
 @dataclass
 class CrawlerConfig:
@@ -73,13 +75,14 @@ class CrawlerConfig:
     run_parse: bool = False
     run_download: bool = False
     force: bool = False
-    media_dir: str = "media_detail"
+    media_dir: str = os.path.join(CRAW_DATA, "media_detail")
+    actress_dir: str = os.path.join(CRAW_DATA, "actress")
     search_dir: str = "search_site"
     logdir: str = "."
     retry_limit: int = 1
     min_delay: float = 10.0
     max_delay: float = 90.0
-    user_data_dir: str = None  # New field for browser profile
+    user_data_dir: str = None
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"
     dry_run: bool = False
     verbose: bool = False
@@ -88,8 +91,9 @@ class CrawlerConfig:
     discover_start_page: int = 1
     discover_pages: int = 3
     discover_prefixes: List[str] = field(default_factory=list)
-    ain_list_file: str = ""
-    active_scan_file: str = ""
+    ain_list_file: str = None
+    active_scan_file: str = os.path.join(CRAW_CONF, "active_scan.json")
+    magnet_output_file: str = os.path.join(CRAW_DATA, "output", "to-be-downloaded.txt")
     stash_url: str = "http://localhost:9999/graphql"
     sync_to_stash: str = ""
     sync_type: str = "performer"
@@ -119,6 +123,7 @@ class Crawler:
         self.cookie_domain = SITES_CONFIG.get(config.site, {}).get("cookie_domain")
         self.parser = load_parser(config.site)
         self.media_dir = Path(config.media_dir)
+        self.actress_dir = Path(config.actress_dir)
         self.search_dir = Path(config.search_dir)
         self.logdir = Path(config.logdir)
         self.dynamic_cookie = "PHPSESSID=chekskp1bf9hssrr3gq7e5mag0; existmag=mag; age=verified; dv=1"
@@ -267,6 +272,7 @@ class Crawler:
                         return magnets
             except Exception as e: pass
         return []
+
     async def run_parse(self, scene_name: str, search_result: dict, web_crawler: AsyncWebCrawler):
         url = search_result.get('page_url')
         if not url: return
@@ -274,40 +280,64 @@ class Crawler:
         print(f"Scraping page URL: {url}")
         
         soup = await self._fetch_soup_safe(url, web_crawler)
-        html = str(soup)
-        
         detail = {}
-        if self.config.site == "javbus":
-            title_node = soup.select_one(".container h3") or soup.select_one(".header h3")
-            detail["title"] = title_node.text.strip() if title_node else ""
-            
-            for p in soup.select(".photo-info p"):
-                if "識別碼" in p.text or "ID" in p.text:
-                    if ":" in p.text:
-                        detail["id"] = p.text.split(":")[-1].strip()
-                        break
-            
-            if not detail.get("id"): detail["id"] = scene_name
-            
-            cover_img = soup.select_one(".bigImage img")
-            if cover_img:
-                src = cover_img["src"]
-                if not src.startswith("http"): src = "https://www.javbus.com" + src
-                detail["cover_image"] = src
-            
-            detail["sample_images"] = []
-            for img in soup.select(".sample-box img"):
-                src = img.get("src")
-                if src:
-                    if not src.startswith("http"): src = "https://www.javbus.com" + src
-                    detail["sample_images"].append(src)
-            
-            detail["magnet_entries"] = await self._fetch_javbus_magnets(html, url)
         
+        if soup:
+            # Manual extraction using BeautifulSoup (Fast Path)
+            if self.config.site == "javbus":
+                title_node = soup.select_one(".container h3") or soup.select_one(".header h3")
+                detail["title"] = title_node.text.strip() if title_node else ""
+                
+                for p in soup.select(".photo-info p"):
+                    if "識別碼" in p.text or "ID" in p.text:
+                        if ":" in p.text:
+                            detail["id"] = p.text.split(":")[-1].strip()
+                            break
+                
+                if not detail.get("id"): detail["id"] = scene_name
+                
+                cover_img = soup.select_one(".bigImage img")
+                if cover_img:
+                    src = cover_img["src"]
+                    if not src.startswith("http"): src = "https://www.javbus.com" + src
+                    detail["cover_image"] = src
+                
+                detail["sample_images"] = []
+                for img in soup.select(".sample-box img"):
+                    src = img.get("src")
+                    if src:
+                        if not src.startswith("http"): src = "https://www.javbus.com" + src
+                        detail["sample_images"].append(src)
+                
+                # HARVEST PERFORMERS
+                detail["performers"] = []
+                for a in soup.select('a[href*="/star/"]'):
+                    p_name = a.text.strip()
+                    p_url = a.get('href', '')
+                    if p_name and p_url:
+                        if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
+                        detail["performers"].append({"name": p_name, "url": p_url})
+
+                detail["magnet_entries"] = await self._fetch_javbus_magnets(str(soup), url)
+        
+        # Fallback to Javascript Extractor if soup failed or manual parse was incomplete
+        if not detail or (self.config.site == "javbus" and not detail.get("magnet_entries")):
+            extractor_js = SITES_CONFIG.get(self.config.site, {}).get("detail_js_extractor")
+            if extractor_js:
+                 result = await web_crawler.arun(url=url, config=self.crawl_config, headers=self._get_http_headers(), js_code=extractor_js)
+                 js_out = getattr(result, 'js_execution_result', None) or {}
+                 results_arr = js_out.get('results', [])
+                 if isinstance(results_arr, list) and results_arr:
+                     detail = results_arr[0]
+                     if isinstance(detail, dict):
+                         self.dynamic_cookie = detail.get('cookie', self.dynamic_cookie)
+                         self.dynamic_user_agent = detail.get('userAgent', self.dynamic_user_agent)
+
         if not detail or not detail.get("id") or detail.get("id") == "JavBus":
             try:
                 from .sites.javdb import page_parser
-                detail = page_parser.parse_from_text(soup.get_text(), id_hint=scene_name)
+                if soup:
+                    detail = page_parser.parse_from_text(soup.get_text(), id_hint=scene_name)
             except: pass
 
         if detail:
@@ -325,6 +355,8 @@ class Crawler:
                     from .lib import merge_detail_into_search as merger
                     merger.merge_detail(detail_file, self.config.site, search_dir=str(self.search_dir))
                 except: pass
+            return detail
+        return None
 
     async def run_download(self, scene_name: str):
         detail_file = self.media_dir / scene_name / f"{scene_name}.json"
@@ -392,9 +424,9 @@ class Crawler:
                 async with session.get(url, timeout=10, allow_redirects=True) as resp:
                     if resp.status == 200:
                         html = await resp.text()
-                        if "你是否已經成年" not in html and "確認" not in html:
+                        if "你是否已經成年" not in html and "確認" not in html and "18歳以上" not in html:
                             soup = BeautifulSoup(html, 'lxml')
-                            if soup.select('.movie-box') or soup.select('.bigImage'):
+                            if soup.select('.movie-box') or soup.select('.bigImage') or soup.select('.photo-info'):
                                 return soup
             except Exception:
                 pass
@@ -404,38 +436,44 @@ class Crawler:
         return (() => {
             const ageCheck = document.querySelector('input[type="checkbox"]');
             if (ageCheck) ageCheck.click();
-            const btn = Array.from(document.querySelectorAll('button, a')).find(b => b.innerText.includes('成年') || b.innerText.includes('確認'));
+            const btns = Array.from(document.querySelectorAll('button, a'));
+            const btn = btns.find(b => 
+                b.innerText.includes('成年') || 
+                b.innerText.includes('確認') || 
+                b.innerText.includes('18歳以上') ||
+                b.innerText.includes('Enter')
+            );
             if (btn) btn.click();
             return { cookie: document.cookie, userAgent: navigator.userAgent };
         })();
         '''
         
-        result = await web_crawler.arun(
-            url=url, 
-            config=self.crawl_config, 
-            headers=self._get_http_headers(), 
-            js_code=js_bypass,
-            wait_for=".movie-box, .bigImage, button:has-text('成年')"
-        )
-        
-        # Update cookies
-        js_out = getattr(result, 'js_execution_result', None) or {}
-        results_arr = js_out.get('results', [])
-        if isinstance(results_arr, list) and results_arr:
-            res = results_arr[0]
-            if isinstance(res, dict):
-                self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
-                self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
-
-        if "你是否已經成年" in (result.html or ""):
-             result = await web_crawler.arun(
+        for attempt in range(2):
+            result = await web_crawler.arun(
                 url=url, 
-                config=self.crawl_config,
-                headers=self._get_http_headers(),
-                wait_for=".movie-box, .bigImage"
+                config=self.crawl_config, 
+                headers=self._get_http_headers(), 
+                js_code=js_bypass,
+                wait_for=".movie-box, .bigImage, .photo-info, button:has-text('成年'), button:has-text('確認')"
             )
+            
+            # Update cookies
+            js_out = getattr(result, 'js_execution_result', None) or {}
+            results_arr = js_out.get('results', [])
+            if isinstance(results_arr, list) and results_arr:
+                res = results_arr[0]
+                if isinstance(res, dict):
+                    self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
+                    self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
 
-        return BeautifulSoup(result.html or "", 'lxml')
+            html = result.html or ""
+            if "你是否已經成年" not in html and "確認" not in html and "18歳以上" not in html:
+                return BeautifulSoup(html, 'lxml')
+            
+            print(f"Age gate still present after attempt {attempt+1}, retrying...")
+            await asyncio.sleep(1)
+
+        return BeautifulSoup(html, 'lxml')
 
     def _check_and_save_magnets(self, scene_id: str):
         detail_file = self.media_dir / scene_id / f"{scene_id}.json"
@@ -447,8 +485,9 @@ class Crawler:
                     ddata = json.load(df)
                     
                     existing_lines = []
-                    if os.path.exists('to-be-downloaded.txt'):
-                        with open('to-be-downloaded.txt', 'r', encoding='utf-8') as mf:
+                    magnet_file = self.config.magnet_output_file
+                    if os.path.exists(magnet_file):
+                        with open(magnet_file, 'r', encoding='utf-8') as mf:
                             existing_lines = mf.read().splitlines()
                             
                     for mag in ddata.get('magnet_entries', []):
@@ -456,24 +495,94 @@ class Crawler:
                         if size_gb > 1.2:
                             uri = mag.get('uri')
                             if uri not in existing_lines:
-                                with open('to-be-downloaded.txt', 'a', encoding='utf-8') as mf:
+                                os.makedirs(os.path.dirname(magnet_file), exist_ok=True)
+                                with open(magnet_file, 'a', encoding='utf-8') as mf:
                                     mf.write(uri + "\n")
                                 existing_lines.append(uri)
                                 print(f"Saved magnet (>1.2GB) for {scene_id}: {size_gb:.2f}GB")
             except Exception as e:
                 print(f"Failed to check magnets for {scene_id}: {e}", file=sys.stderr)
 
+    def _load_active_scan(self) -> Dict[str, str]:
+        as_path = Path(self.config.active_scan_file)
+        if as_path.exists():
+            try:
+                with open(as_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error loading active scan JSON: {e}")
+        return {}
+
+    def _save_active_scan(self, data: Dict[str, str]):
+        as_path = Path(self.config.active_scan_file)
+        as_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(as_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Failed to save active scan JSON: {e}")
+
+    async def _harvest_performers(self, detail_data: dict, web_crawler: AsyncWebCrawler):
+        performers = detail_data.get('performers', [])
+        if not performers:
+            return
+            
+        # Junk names to ignore
+        junk_names = {"画像を拡大する", "画像を拡大", "拡大する", "画像"}
+        
+        active_scan_data = self._load_active_scan()
+        updated = False
+        for p in performers:
+            name = p.get('name', '').strip()
+            url = p.get('url')
+            if name and url and name not in junk_names:
+                # Basic cleaning: remove trailing punctuation sometimes found in links
+                if name.endswith('（'): name = name[:-1]
+                
+                # Check if we need to extract full profile
+                # If it's not in active_scan, OR if the actress file is missing/incomplete
+                actor_file = self.actress_dir / name / f"{name}.json"
+                is_incomplete = False
+                if actor_file.exists():
+                    try:
+                        with open(actor_file, 'r', encoding='utf-8') as f:
+                            a_data = json.load(f)
+                            # If it only has basic keys, it's incomplete
+                            if len(a_data.keys()) <= 3:
+                                is_incomplete = True
+                    except: is_incomplete = True
+
+                if name not in active_scan_data or is_incomplete:
+                    if name not in active_scan_data:
+                        active_scan_data[name] = url
+                        updated = True
+                    
+                    print(f"Harvesting full profile for: {name}")
+                    await self._extract_and_save_actor_info(url, name, web_crawler)
+                
+        if updated:
+            self._save_active_scan(active_scan_data)
+
     async def _process_discovered_media(self, scene_id: str, title: str, page_url: str, web_crawler: AsyncWebCrawler):
         if not self.config.force and self._is_complete(scene_id):
             print(f"Skipping '{scene_id}' as it appears complete. Use --force to re-process.")
+            # Still harvest actors from complete scenes to keep active_scan updated
+            detail_file = self.media_dir / scene_id / f"{scene_id}.json"
+            if detail_file.exists():
+                try:
+                    with open(detail_file, 'r', encoding='utf-8') as f:
+                        await self._harvest_performers(json.load(f), web_crawler)
+                except Exception: pass
         else:
-            await self.run_parse(scene_id, {'page_url': page_url}, web_crawler)
+            detail = await self.run_parse(scene_id, {'page_url': page_url}, web_crawler)
+            if detail:
+                await self._harvest_performers(detail, web_crawler)
             if self.config.download_image:
                 await self.run_download(scene_id)
         self._check_and_save_magnets(scene_id)
 
     def _add_to_actor_media_list(self, actor_name: str, scene_id: str, title: str):
-        media_list_file = Path("actress") / actor_name / "media_list.json"
+        media_list_file = self.actress_dir / actor_name / "media_list.json"
         media_list_file.parent.mkdir(parents=True, exist_ok=True)
         media_data = []
         if media_list_file.exists():
@@ -493,15 +602,29 @@ class Crawler:
                 print(f"Failed to update {media_list_file}: {e}")
 
     async def _extract_and_save_actor_info(self, star_url: str, actor_name: str, web_crawler: AsyncWebCrawler):
-        actor_dir = Path("actress") / actor_name
+        actor_dir = self.actress_dir / actor_name
         actor_dir.mkdir(parents=True, exist_ok=True)
         actor_file = actor_dir / f"{actor_name}.json"
+        
+        # If not force, and file exists and is complete, skip
         if not self.config.force and actor_file.exists():
-            return
+            try:
+                with open(actor_file, 'r', encoding='utf-8') as f:
+                    if len(json.load(f).keys()) > 3:
+                        return
+            except: pass
             
         print(f"Extracting profile for {actor_name} from {star_url}")
         soup = await self._fetch_soup_safe(star_url, web_crawler)
+        if not soup:
+            print(f"Failed to fetch profile for {actor_name}")
+            return
+
         info = {"name": actor_name, "url": star_url}
+        
+        photo_info = soup.select_one(".photo-info")
+        if not photo_info:
+            print(f"Warning: .photo-info not found for {actor_name}. Might be an age gate issue or missing data.")
         
         avatar = soup.select_one(".photo-frame img")
         if avatar:
@@ -512,14 +635,14 @@ class Crawler:
             if avatar.get("title"):
                 info["name"] = avatar.get("title", "").strip()
                 
-        for p in soup.select(".photo-info p"):
-            p_text = p.text.strip()
-            if ":" in p_text:
-                k, v = p_text.split(":", 1)
-                info[k.strip()] = v.strip()
+        if photo_info:
+            for p in photo_info.select("p"):
+                p_text = p.get_text(strip=True)
+                if ":" in p_text:
+                    k, v = p_text.split(":", 1)
+                    info[k.strip()] = v.strip()
         
         try:
-            import json
             with open(actor_file, 'w', encoding='utf-8') as f:
                 json.dump(info, f, ensure_ascii=False, indent=2)
             print(f"Saved profile for {actor_name} to {actor_file}")
@@ -561,30 +684,20 @@ class Crawler:
 
     async def run_discovery(self, web_crawler: AsyncWebCrawler):
         ain_list = set()
-        ain_file = self.config.ain_list_file or "ain_list.json"
-        if os.path.exists(ain_file):
+        ain_file = self.config.ain_list_file
+        if ain_file and os.path.exists(ain_file):
+            if not ain_file.endswith('.json'):
+                print(f"ALERT: Non-JSON list file detected: {ain_file}. Support for plain text lists has been removed.")
             try:
                 with open(ain_file, 'r', encoding='utf-8') as f:
-                    if ain_file.endswith('.json'):
-                        ain_data = json.load(f)
+                    ain_data = json.load(f)
+                    if isinstance(ain_data, dict):
                         ain_list = set(ain_data.keys())
                     else:
-                        ain_list = {line.strip() for line in f if line.strip()}
+                        print(f"ALERT: {ain_file} is not a JSON dictionary. Only dictionary format ({'ActorName': [IDs]}) is supported.")
             except Exception as e:
                 print(f"Error loading ain list: {e}")
                 
-        active_scan_data = {}
-        active_scan_file = self.config.active_scan_file or "actress/active_scan.json"
-        as_path = Path(active_scan_file)
-        as_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        if as_path.exists():
-            try:
-                with open(as_path, 'r', encoding='utf-8') as f:
-                    active_scan_data = json.load(f)
-            except Exception as e:
-                print(f"Error loading active scan JSON: {e}")
-
         prefixes = self.config.discover_prefixes
         base_url = SITES_CONFIG.get(self.config.site, {}).get('home_url', 'https://www.javbus.com')
         
@@ -623,11 +736,8 @@ class Crawler:
                 if not scene_id or not page_url:
                     continue
                 
+                # Match logic
                 match_prefix = any(scene_id.startswith(p) for p in prefixes) if prefixes else False
-                if match_prefix:
-                    print(f"Matched (prefix) '{scene_id}': {title}")
-                    await self._process_discovered_media(scene_id, title, page_url, web_crawler)
-
                 matched_actor = None
                 if ain_list:
                     for actor in ain_list:
@@ -635,33 +745,24 @@ class Crawler:
                             matched_actor = actor
                             break
                 
-                if matched_actor:
-                    if not match_prefix:
-                        print(f"Matched (actor: {matched_actor}) '{scene_id}': {title}")
+                # Intuitive Match: If no filters are provided, everything is a match.
+                is_match = False
+                match_reason = ""
+                if not prefixes and not ain_list:
+                    is_match = True
+                    match_reason = "Unfiltered"
+                elif match_prefix:
+                    is_match = True
+                    match_reason = "Prefix"
+                elif matched_actor:
+                    is_match = True
+                    match_reason = "Actor"
+
+                if is_match:
+                    print(f"Matched ({match_reason}) '{scene_id}': {title}")
+                    if matched_actor:
                         self._add_to_actor_media_list(matched_actor, scene_id, title)
-                        await self._process_discovered_media(scene_id, title, page_url, web_crawler)
-                    
-                    star_url = active_scan_data.get(matched_actor, "")
-                    if not star_url:
-                        print(f"Collection URL missing for {matched_actor}. Fetching detail page...")
-                        detail_soup = await self._fetch_soup_safe(page_url, web_crawler)
-                        for a in detail_soup.select('a'):
-                            href = a.get('href', '')
-                            if '/star/' in href and matched_actor in a.text:
-                                star_url = href
-                                if not star_url.startswith('http'):
-                                    star_url = base_url + star_url
-                                break
-                                
-                        if star_url:
-                            active_scan_data[matched_actor] = star_url
-                            try:
-                                with open(as_path, 'w', encoding='utf-8') as f:
-                                    json.dump(active_scan_data, f, ensure_ascii=False, indent=2)
-                                print(f"Updated active_scan JSON with URL for {matched_actor}: {star_url}")
-                                await self._extract_and_save_actor_info(star_url, matched_actor, web_crawler)
-                            except Exception as e:
-                                print(f"Failed to update active_scan JSON: {e}")
+                    await self._process_discovered_media(scene_id, title, page_url, web_crawler)
             
             if page < start_p + self.config.discover_pages - 1:
                 delay = random.uniform(self.config.min_delay, self.config.max_delay)
@@ -669,19 +770,9 @@ class Crawler:
                 await asyncio.sleep(delay)
 
     async def run_collection_scan(self, web_crawler: AsyncWebCrawler):
-        active_scan_data = {}
-        active_scan_file = self.config.active_scan_file or "actress/active_scan.json"
-        as_path = Path(active_scan_file)
-        
-        if not as_path.exists():
-            print(f"Active scan file not found: {active_scan_file}")
-            return
-            
-        try:
-            with open(as_path, 'r', encoding='utf-8') as f:
-                active_scan_data = json.load(f)
-        except Exception as e:
-            print(f"Error loading active scan JSON: {e}")
+        active_scan_data = self._load_active_scan()
+        if not active_scan_data:
+            print(f"No performers found in active scan file: {self.config.active_scan_file}")
             return
             
         for actor_name, star_url in active_scan_data.items():
@@ -693,7 +784,7 @@ class Crawler:
 
     async def download_actor_covers(self, actor_name: str):
         print(f"\n--- Downloading covers for {actor_name} ---")
-        media_list_path = Path("actress") / actor_name / "media_list.json"
+        media_list_path = self.actress_dir / actor_name / "media_list.json"
         
         if not media_list_path.exists():
             print(f"Media list for {actor_name} not found at {media_list_path}")
@@ -894,21 +985,28 @@ class Crawler:
         
         media_list = []
         # Attempt to load from legacy media_list format just in case
-        media_list_path = Path("actress") / group_name / "media_list.json"
+        media_list_path = self.actress_dir / group_name / "media_list.json"
         
         if media_list_path.exists():
             with open(media_list_path, 'r', encoding='utf-8') as f:
                 media_list = json.load(f)
         
-        if not media_list and Path(self.config.ain_list_file).exists():
-            with open(self.config.ain_list_file, 'r', encoding='utf-8') as f:
-                group_data = json.load(f)
-                if group_name in group_data:
-                    media_list = [{"id": v_id} for v_id in group_data[group_name]]
-                    print(f"Loaded {len(media_list)} scenes from {self.config.ain_list_file} for {group_name}.")
+        if not media_list and self.config.ain_list_file and Path(self.config.ain_list_file).exists():
+            try:
+                with open(self.config.ain_list_file, 'r', encoding='utf-8') as f:
+                    group_data = json.load(f)
+                    if isinstance(group_data, dict):
+                        if group_name in group_data:
+                            media_list = [{"id": v_id} for v_id in group_data[group_name]]
+                            print(f"Loaded {len(media_list)} scenes from {self.config.ain_list_file} for {group_name}.")
+                    else:
+                        print(f"ALERT: {self.config.ain_list_file} is not a JSON dictionary. Only dictionary format is supported.")
+            except Exception as e:
+                print(f"Error loading {self.config.ain_list_file}: {e}")
 
         if not media_list:
-            print(f"Media list for {group_name} not found in media_list.json or {self.config.ain_list_file}.")
+            ain_msg = f" or {self.config.ain_list_file}" if self.config.ain_list_file else ""
+            print(f"Media list for {group_name} not found in media_list.json{ain_msg}.")
             return
             
         p_id = None
@@ -954,7 +1052,9 @@ class Crawler:
                 print(f"  Successfully updated scene {v_id} in Stash.")
 
     async def rebuild_list(self, category: str):
-        out_file = f"{category}_list.json"
+        data_dir = os.environ.get("CRAW_DATA", CRAW_DATA)
+        out_file = os.path.join(data_dir, "list", f"{category}_list.json")
+        os.makedirs(os.path.dirname(out_file), exist_ok=True)
         base = self.config.rebuild_path.format(category=category)
         
         if self.config.rebuild_host:
@@ -993,13 +1093,20 @@ class Crawler:
         print(f"Rebuilt {out_file} with {len(actor_data)} actresses.")
 
     async def mcp_match(self, file_path: str):
-        list_file = self.config.ain_list_file or "ain_list.json"
-        if not Path(list_file).exists():
-            print(f"{list_file} not found. Run --rebuild-list <category> first.")
+        list_file = self.config.ain_list_file
+        if not list_file or not Path(list_file).exists():
+            print(f"List file not specified or not found. Cannot proceed.")
             return
-        with open(list_file, "r", encoding="utf-8") as f:
-            ain_data = json.load(f)
-        ain_list = set(ain_data.keys())
+        try:
+            with open(list_file, "r", encoding="utf-8") as f:
+                ain_data = json.load(f)
+                if not isinstance(ain_data, dict):
+                    print(f"ALERT: {list_file} is not a JSON dictionary. Only dictionary format is supported.")
+                    return
+                ain_list = set(ain_data.keys())
+        except Exception as e:
+            print(f"Error loading {list_file}: {e}")
+            return
         
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -1112,10 +1219,12 @@ class Crawler:
             await self.run_download(scene_id)
             
         # Append magnets
+        magnet_file = self.config.magnet_output_file
         for mag in magnets:
             gb = parse_size_to_gb(mag['total_size'])
             if gb > 1.2:
-                with open('to-be-downloaded.txt', 'a', encoding='utf-8') as mf:
+                os.makedirs(os.path.dirname(magnet_file), exist_ok=True)
+                with open(magnet_file, 'a', encoding='utf-8') as mf:
                     mf.write(mag['uri'] + '\n')
                 print(f" Saved magnet: {gb:.2f}GB")
 
@@ -1190,7 +1299,8 @@ async def main():
     parser.add_argument("--run-parse", action="store_true", help="Run the parse phase")
     parser.add_argument("--run-download", action="store_true", help="Run the download phase")
     parser.add_argument("-f", "--force", action="store_true", help="Force re-processing")
-    parser.add_argument("--media-dir", default="media_detail", help="Directory to save media details")
+    parser.add_argument("--media-dir", default=os.path.join(CRAW_DATA, "media_detail"), help="Directory to save media details")
+    parser.add_argument("--actress-dir", default=os.path.join(CRAW_DATA, "actress"), help="Directory to save actress details")
     parser.add_argument("--search-dir", default="search_site", help="Directory to save search results")
     parser.add_argument("--logdir", default=".", help="Directory to save verbose output files")
     parser.add_argument("--input-file", help="JSON file with a list of scenes to process")
@@ -1206,8 +1316,9 @@ async def main():
     parser.add_argument("--start-page", type=int, default=1, help="Start page")
     parser.add_argument("--pages", type=int, default=3, help="Number of pages")
     parser.add_argument("--prefix", nargs='+', default=[], help="ID prefixes")
-    parser.add_argument("--ain-list", default="ain_list.json", help="Actor list file (e.g. ain_list.json, cin_list.json)")
-    parser.add_argument("--active-scan", default="", help="Active scan file")
+    parser.add_argument("--ain-list", default=None, help="Actor list file (e.g. data/ain_list.json, data/cin_list.json)")
+    parser.add_argument("--active-scan", default=os.path.join(CRAW_CONF, "active_scan.json"), help="Active scan file")
+    parser.add_argument("--magnet-output", default=os.path.join(CRAW_DATA, "output", "to-be-downloaded.txt"), help="File to append magnets to")
     parser.add_argument("--download-actor-covers", default="", help="Download all covers for the specified actor")
     parser.add_argument("--stash-url", default="http://192.168.20.24:9999/graphql", help="Stash GraphQL URL")
     parser.add_argument("--sync-to-stash", default="", help="Sync all scenes for the specified group to Stash")
@@ -1228,6 +1339,7 @@ async def main():
     config.force = args.force
     config.verbose = args.verbose
     config.media_dir = args.media_dir
+    config.actress_dir = args.actress_dir
     config.search_dir = args.search_dir
     config.logdir = args.logdir
     config.user_data_dir = args.user_data_dir
@@ -1239,6 +1351,7 @@ async def main():
     config.discover_prefixes = args.prefix
     config.ain_list_file = args.ain_list
     config.active_scan_file = args.active_scan
+    config.magnet_output_file = args.magnet_output
     config.download_actor_covers = args.download_actor_covers
     config.stash_url = args.stash_url
     config.sync_to_stash = args.sync_to_stash

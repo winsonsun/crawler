@@ -17,6 +17,9 @@ from pathlib import Path
 from urllib import parse
 from .exceptions import DownloadHttpError, DownloadUrlError, DownloadError
 
+CRAW_DATA = os.environ.get("CRAW_DATA", "./data")
+DEFAULT_MEDIA_DIR = os.path.join(CRAW_DATA, "media_detail")
+
 DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
 DEFAULT_COOKIE = 'PHPSESSID=chekskp1bf9hssrr3gq7e5mag0; existmag=mag; age=verified; dv=1'
 
@@ -65,7 +68,7 @@ def download_url(url: str, dest: Path, timeout: int = 20, headers: dict = None) 
             return await download_url_async(session, url, dest, timeout)
     return asyncio.run(_run())
 
-def is_scene_complete(detail_file: Path, media_dir: str = 'media_detail') -> bool:
+def is_scene_complete(detail_file: Path, media_dir: str = DEFAULT_MEDIA_DIR) -> bool:
     """Check if a scene is complete based on its detail JSON and existing files."""
     if not detail_file.is_file():
         return False
@@ -102,7 +105,7 @@ def is_scene_complete(detail_file: Path, media_dir: str = 'media_detail') -> boo
     return True
 
 
-async def process_detail_file_async(path: Path, timeout: int = 20, download_cover: bool = True, skip_existing: bool = True, media_dir: str = 'media_detail', headers: dict = None, session: aiohttp.ClientSession = None):
+async def process_detail_file_async(path: Path, timeout: int = 20, download_cover: bool = True, skip_existing: bool = True, media_dir: str = DEFAULT_MEDIA_DIR, headers: dict = None, session: aiohttp.ClientSession = None):
     data = json.loads(path.read_text(encoding='utf-8'))
     sid = data.get('id') or path.stem
     outdir = Path(media_dir) / sid
@@ -168,7 +171,7 @@ async def process_detail_file_async(path: Path, timeout: int = 20, download_cove
             
     return results
 
-def process_detail_file(path: Path, timeout: int = 20, download_cover: bool = True, skip_existing: bool = True, media_dir: str = 'media_detail', headers: dict = None):
+def process_detail_file(path: Path, timeout: int = 20, download_cover: bool = True, skip_existing: bool = True, media_dir: str = DEFAULT_MEDIA_DIR, headers: dict = None):
     return asyncio.run(process_detail_file_async(path, timeout, download_cover, skip_existing, media_dir, headers))
 
 
@@ -178,7 +181,7 @@ def main():
     p.add_argument('--timeout', type=int, default=20, help='HTTP timeout seconds')
     p.add_argument('--no-cover', dest='cover', action='store_false', help='Do not download cover image')
     p.add_argument('--no-skip', dest='skip', action='store_false', help='Do not skip existing files')
-    p.add_argument('--media-dir', default='media_detail', help='Directory to save media details')
+    p.add_argument('--media-dir', default=DEFAULT_MEDIA_DIR, help='Directory to save media details')
     args = p.parse_args()
 
     path = Path(args.path)
