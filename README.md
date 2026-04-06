@@ -1,0 +1,107 @@
+# Scene Crawler
+
+This project is a command-line tool for crawling, parsing, and downloading information about scenes from various websites.
+
+## Requirements
+
+*   Python 3.7+
+*   Google Chrome (optional, for cookie importing)
+
+## Setup
+
+1.  **Create a virtual environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+2.  **Install the project in editable mode:**
+    This will install all dependencies from `pyproject.toml` and make the `crawler` command available.
+    ```bash
+    pip install -e .
+    ```
+
+## Handling Human Verification (Cloudflare)
+
+Modern websites often use services like Cloudflare to block bots. To bypass this, the crawler uses a persistent browser session where you have manually solved the "human verification" challenge once.
+
+The workflow involves a one-time setup script and then running the main crawler.
+
+### Step 1: Create the Browser Profile (One-Time Setup)
+
+This step launches a visible Chrome browser. You will use it to solve the CAPTCHA, which saves a "clearance cookie" to a reusable profile directory.
+
+1.  **Run the setup script on your server:**
+    This command starts the browser on your server and opens a special "debugging" port so you can control it from your local machine. Port `9222` is a common choice.
+    ```bash
+    python setup_profile.py --remote-debugging-port=9222
+    ```
+2.  **Create a secure tunnel from your local machine:**
+    Open a **new terminal** on your local computer and run the following `ssh` command. This securely forwards the remote browser's port to your local machine.
+    *(Replace `your_user@your_server_ip` with your server's credentials.)*
+    ```bash
+    ssh -L 9222:localhost:9222 your_user@your_server_ip
+    ```
+    Keep this terminal open.
+
+3.  **Connect and control the remote browser:**
+    On your **local machine**, open your regular Chrome browser and navigate to `chrome://inspect`.
+    *   Click the **"Configure..."** button and add `localhost:9222` to the list of targets.
+    *   After a few seconds, a remote target will appear. Click the **"inspect"** link.
+    *   A new window will pop up that is a **live view** of the browser on your server. Use this window to go to the target website (e.g., `javdb.com`) and solve the human verification challenge.
+    *   Once you see the real website, the cookie is saved. You can close the remote control window and stop the `setup_profile.py` script on the server (`Ctrl+C`).
+
+### Step 2: Run the Crawler
+
+With the profile created, you can now run the main crawler. It will automatically use the session from the profile directory and bypass the Cloudflare challenge.
+
+```bash
+# The crawler command is available because we installed with 'pip install -e .'
+crawler --input-file your_scenes.json
+```
+The crawler will use the default profile path (`./chrome-profile`). You can specify a different path with the `--user-data-dir` argument.
+
+## Usage
+
+The main entry point is the `crawler` command.
+
+### Basic Usage
+
+To crawl a single scene:
+```bash
+crawler MIST-001
+```
+To crawl multiple scenes:
+```bash
+crawler MIST-001 PPPE-378
+```
+### Using an Input File
+```bash
+crawler --input-file your_scenes.json
+```
+The JSON file can be a simple list of strings, or a dictionary with a "scenes" key and retry/delay behavior:
+```json
+{
+  "scenes": [
+    "MIST-001",
+    "PPPE-378"
+  ],
+  "retry-limit": 5,
+  "min-delay": "5s",
+  "max-delay": "30s"
+}
+```
+### Command-Line Arguments
+For a full list of command-line arguments, run:
+```bash
+crawler -h
+```
+### Project Structure
+The project has the following directory structure:
+*   `src/crawler/`: Contains the main application source code.
+    *   `crawler.py`: The main script and orchestrator.
+    *   `sites/`: Contains the site-specific parsers.
+    *   `lib/`: Contains shared library code.
+*   `tests/`: Contains the unit tests.
+*   `pyproject.toml`: The project definition and dependency list.
+*   `setup_profile.py`: The one-time script for creating a browser session.
+*   `sites.json`: The site configuration file.
