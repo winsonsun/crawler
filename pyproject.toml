@@ -1,0 +1,29 @@
+[project]
+name = "scene-crawler"
+version = "0.1.0"
+description = "A web crawler for finding and downloading scene details and images."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Your Name", email = "you@example.com"},
+]
+
+dependencies = [
+    "aiohttp",
+    "aiofiles",
+    "lxml",
+    "crawl4ai",
+    "browser_cookie3",
+    "tenacity",
+]
+
+[project.scripts]
+crawler = "crawler.main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

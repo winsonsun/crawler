@@ -1,0 +1,5 @@
+crawl4ai
+browser_cookie3
+tenacityaiohttp
+aiofiles
+lxml

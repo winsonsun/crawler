@@ -1,0 +1,35 @@
+# Virtual Environment
+venv/
+/venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS-specific files
+.DS_Store
+
+# Log and output files
+*.log
+*.bak
+my_file_*.txt
+my_page_*.txt
+
+# Output directories
+media_detail/*
+search_site/*
+#!/lib/
+
+test_root
+tests
+*.json
+*.log
+.DS_Store
+.vscode
+*.pyc
+full_dump.txt
+test_sandbox
+
+.env
+release
+
