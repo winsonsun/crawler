@@ -8,6 +8,24 @@ import base64
 import sys
 import os
 from crawl4ai import *
+from crawl4ai.extraction_strategy import LLMExtractionStrategy
+try:
+    from crawl4ai.models import LLMConfig
+except ImportError:
+    pass
+from pydantic import BaseModel, Field
+
+class ActressProfileSchema(BaseModel):
+    name: str = Field(description="Name of the actress")
+    birthday: str = Field(description="Birthday in YYYY-MM-DD format", default="")
+    age: str = Field(description="Age as an integer string", default="")
+    height: str = Field(description="Height in cm (e.g., '160cm')", default="")
+    birthplace: str = Field(description="Place of birth", default="")
+    hobbies: str = Field(description="Hobbies or special skills", default="")
+    bust: str = Field(description="Bust size in cm (e.g., '90cm')", default="")
+    waist: str = Field(description="Waist size in cm (e.g., '60cm')", default="")
+    hip: str = Field(description="Hip size in cm (e.g., '88cm')", default="")
+
 
 import re
 import pprint
@@ -100,6 +118,7 @@ class CrawlerConfig:
     native_fetch: bool = False
     rebuild_host: str = "winsonsun@192.168.20.24"
     rebuild_path: str = "/mnt/cig/video/{category}"
+    llm_enrich: bool = False
 
 def parse_size_to_gb(size_str: str) -> float:
     if not size_str: return 0.0
@@ -119,6 +138,18 @@ class Crawler:
     """Encapsulates parsing and web crawling logic."""
 
     def __init__(self, config: CrawlerConfig):
+        # Load .env variables
+        env_path = Path(".env")
+        if env_path.exists():
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip() and not line.startswith("#"):
+                        try:
+                            k, v = line.strip().split("=", 1)
+                            os.environ[k] = v.strip('"\'')
+                        except ValueError:
+                            pass
+
         self.config = config
         self.cookie_domain = SITES_CONFIG.get(config.site, {}).get("cookie_domain")
         self.parser = load_parser(config.site)
@@ -135,6 +166,23 @@ class Crawler:
             user_agent=self.dynamic_user_agent
         )
         self.search_lock = asyncio.Lock()
+        
+        # Load Global Aliases
+        self.alias_map = {}
+        alias_file = Path(os.environ.get("CRAW_CONF", "config")) / "actress_aliases.json"
+        if alias_file.exists():
+            try:
+                with open(alias_file, 'r', encoding='utf-8') as f:
+                    self.alias_map = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load alias map: {e}")
+
+    def _resolve_actor_name(self, name: str) -> Tuple[str, str]:
+        """Resolves an actor name using the global alias map. Returns (primary_name, credited_as_or_None)."""
+        primary = self.alias_map.get(name)
+        if primary:
+            return primary, name
+        return name, None
 
     def _get_http_headers(self):
         """Constructs a standard set of HTTP headers for requests."""
@@ -288,11 +336,65 @@ class Crawler:
                 title_node = soup.select_one(".container h3") or soup.select_one(".header h3")
                 detail["title"] = title_node.text.strip() if title_node else ""
                 
-                for p in soup.select(".photo-info p"):
-                    if "識別碼" in p.text or "ID" in p.text:
-                        if ":" in p.text:
-                            detail["id"] = p.text.split(":")[-1].strip()
-                            break
+                info_block = soup.select_one(".col-md-3.info") or soup.select_one(".info")
+                if info_block:
+                    for p in info_block.select("p"):
+                        text = p.get_text(separator=' ', strip=True)
+                        if "識別碼:" in text or "ID:" in text:
+                            detail["id"] = text.split(":")[-1].strip()
+                        elif "發行日期:" in text:
+                            detail["release_date"] = text.split(":")[-1].strip()
+                        elif "長度:" in text:
+                            detail["length"] = text.split(":")[-1].strip()
+                        elif "導演:" in text:
+                            detail["director"] = text.split(":")[-1].strip()
+                        elif "製作商:" in text:
+                            detail["studio"] = text.split(":")[-1].strip()
+                        elif "發行商:" in text:
+                            detail["label"] = text.split(":")[-1].strip()
+                    
+                    genres = []
+                    for span in info_block.select("span.genre a[href*='/genre/']"):
+                        genres.append(span.text.strip())
+                    if genres:
+                        detail["genres"] = genres
+                        
+                    # HARVEST PERFORMERS
+                    detail["performers"] = []
+                    seen = set()
+                    for a in info_block.select("a[href*='/star/']"):
+                        p_name = a.text.strip()
+                        p_url = a.get('href', '')
+                        if p_name and p_url and p_url not in seen:
+                            if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
+                            
+                            primary_name, credited_as = self._resolve_actor_name(p_name)
+                            p_data = {"name": primary_name, "url": p_url}
+                            if credited_as:
+                                p_data["credited_as"] = credited_as
+                                
+                            detail["performers"].append(p_data)
+                            seen.add(p_url)
+                else:
+                    for p in soup.select(".photo-info p") or soup.select("p"):
+                        if "識別碼" in p.text or "ID" in p.text:
+                            if ":" in p.text:
+                                detail["id"] = p.text.split(":")[-1].strip()
+                                break
+                    # HARVEST PERFORMERS (Fallback)
+                    detail["performers"] = []
+                    for a in soup.select('a[href*="/star/"]'):
+                        p_name = a.text.strip()
+                        p_url = a.get('href', '')
+                        if p_name and p_url:
+                            if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
+                            
+                            primary_name, credited_as = self._resolve_actor_name(p_name)
+                            p_data = {"name": primary_name, "url": p_url}
+                            if credited_as:
+                                p_data["credited_as"] = credited_as
+                                
+                            detail["performers"].append(p_data)
                 
                 if not detail.get("id"): detail["id"] = scene_name
                 
@@ -308,15 +410,6 @@ class Crawler:
                     if src:
                         if not src.startswith("http"): src = "https://www.javbus.com" + src
                         detail["sample_images"].append(src)
-                
-                # HARVEST PERFORMERS
-                detail["performers"] = []
-                for a in soup.select('a[href*="/star/"]'):
-                    p_name = a.text.strip()
-                    p_url = a.get('href', '')
-                    if p_name and p_url:
-                        if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
-                        detail["performers"].append({"name": p_name, "url": p_url})
 
                 detail["magnet_entries"] = await self._fetch_javbus_magnets(str(soup), url)
         
@@ -582,7 +675,8 @@ class Crawler:
         self._check_and_save_magnets(scene_id)
 
     def _add_to_actor_media_list(self, actor_name: str, scene_id: str, title: str):
-        media_list_file = self.actress_dir / actor_name / "media_list.json"
+        primary_name, _ = self._resolve_actor_name(actor_name)
+        media_list_file = self.actress_dir / primary_name / "media_list.json"
         media_list_file.parent.mkdir(parents=True, exist_ok=True)
         media_data = []
         if media_list_file.exists():
@@ -602,9 +696,10 @@ class Crawler:
                 print(f"Failed to update {media_list_file}: {e}")
 
     async def _extract_and_save_actor_info(self, star_url: str, actor_name: str, web_crawler: AsyncWebCrawler):
-        actor_dir = self.actress_dir / actor_name
+        primary_name, _ = self._resolve_actor_name(actor_name)
+        actor_dir = self.actress_dir / primary_name
         actor_dir.mkdir(parents=True, exist_ok=True)
-        actor_file = actor_dir / f"{actor_name}.json"
+        actor_file = actor_dir / f"{primary_name}.json"
         
         # If not force, and file exists and is complete, skip
         if not self.config.force and actor_file.exists():
@@ -614,13 +709,13 @@ class Crawler:
                         return
             except: pass
             
-        print(f"Extracting profile for {actor_name} from {star_url}")
+        print(f"Extracting profile for {actor_name} (Primary: {primary_name}) from {star_url}")
         soup = await self._fetch_soup_safe(star_url, web_crawler)
         if not soup:
             print(f"Failed to fetch profile for {actor_name}")
             return
 
-        info = {"name": actor_name, "url": star_url}
+        info = {"name": primary_name, "url": star_url}
         
         photo_info = soup.select_one(".photo-info")
         if not photo_info:
@@ -632,7 +727,8 @@ class Crawler:
             if src and not src.startswith("http"):
                 src = "https://www.javbus.com" + src
             info["avatar"] = src
-            if avatar.get("title"):
+            # Only override name if we don't have a primary mapping
+            if avatar.get("title") and primary_name == actor_name:
                 info["name"] = avatar.get("title", "").strip()
                 
         if photo_info:
@@ -641,13 +737,135 @@ class Crawler:
                 if ":" in p_text:
                     k, v = p_text.split(":", 1)
                     info[k.strip()] = v.strip()
-        
+                    
+        if self.config.llm_enrich:
+            needs_enrich = False
+            if len(info.keys()) < 10 or "生日" not in info:
+                needs_enrich = True
+            else:
+                for k in ["胸圍", "腰圍", "臀圍"]:
+                    val = info.get(k, "")
+                    match = re.search(r'(\d+)', str(val))
+                    if match and int(match.group(1)) < 50:
+                        needs_enrich = True
+                        break
+            
+            if needs_enrich:
+                llm_info = await self._enrich_actor_info_llm(primary_name, web_crawler)
+                if llm_info:
+                    key_mapping = {
+                        "birthday": "生日",
+                        "age": "年齡",
+                        "height": "身高",
+                        "birthplace": "出生地",
+                        "hobbies": "愛好",
+                        "bust": "胸圍",
+                        "waist": "腰圍",
+                        "hip": "臀圍"
+                    }
+                    for en_k, ch_k in key_mapping.items():
+                        v = llm_info.get(en_k)
+                        if v:
+                            # Suffix 'cm' to sizes if Gemini returned only numbers
+                            if ch_k in ["身高", "胸圍", "腰圍", "臀圍"] and re.match(r'^\d+$', str(v)):
+                                v = f"{v}cm"
+                                
+                            is_small_size = False
+                            if ch_k in ["胸圍", "腰圍", "臀圍"]:
+                                match = re.search(r'(\d+)', str(info.get(ch_k, "")))
+                                if match and int(match.group(1)) < 50:
+                                    is_small_size = True
+                            if ch_k not in info or not info[ch_k] or is_small_size:
+                                info[ch_k] = v
+
+        # Ensure name, url, avatar are at the top
+        final_info = {"name": info.get("name", primary_name)}
+        if "url" in info: final_info["url"] = info["url"]
+        if "avatar" in info: final_info["avatar"] = info["avatar"]
+        if "aliases" in info: final_info["aliases"] = info["aliases"]
+        elif primary_name != actor_name:
+            # Auto-register this specific search alias if not present
+            final_info["aliases"] = [actor_name]
+
+        final_info.update({k: v for k, v in info.items() if k not in ["name", "url", "avatar", "aliases"]})
+
         try:
             with open(actor_file, 'w', encoding='utf-8') as f:
-                json.dump(info, f, ensure_ascii=False, indent=2)
+                json.dump(final_info, f, ensure_ascii=False, indent=2)
             print(f"Saved profile for {actor_name} to {actor_file}")
         except Exception as e:
             print(f"Failed to save profile for {actor_name}: {e}")
+
+    async def _enrich_actor_info_llm(self, actor_name: str, web_crawler: AsyncWebCrawler) -> dict:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            print("GEMINI_API_KEY not found in environment, skipping LLM enrichment.")
+            return None
+            
+        print(f"Enriching profile for {actor_name} using LLM via Wikipedia...")
+        
+        # Helper to check URL validity quickly without spinning up full crawl
+        def find_valid_url(name_variants):
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            }
+            for name in name_variants:
+                url = f"https://ja.wikipedia.org/wiki/{quote_plus(name)}"
+                try:
+                    resp = requests.head(url, headers=headers, timeout=5)
+                    if resp.status_code == 200:
+                        return url
+                    elif resp.status_code == 405:
+                        # Some servers block HEAD, try GET
+                        resp = requests.get(url, headers=headers, timeout=5)
+                        if resp.status_code == 200:
+                            return url
+                except Exception as e:
+                    pass
+            return None
+            
+        names_to_try = [actor_name, f"{actor_name} (AV女優)", f"{actor_name} (女優)"]
+        if "（" in actor_name and "）" in actor_name:
+            match = re.search(r'(.+?)（(.+?)）', actor_name)
+            if match:
+                names_to_try.extend([match.group(1), match.group(2)])
+        elif "(" in actor_name and ")" in actor_name:
+            match = re.search(r'(.+?)\((.+?)\)', actor_name)
+            if match:
+                names_to_try.extend([match.group(1), match.group(2)])
+                
+        valid_url = await asyncio.to_thread(find_valid_url, names_to_try)
+        if not valid_url:
+            print(f"No valid Wikipedia page found for {actor_name}.")
+            return None
+            
+        instruction = "Extract the actress profile information from the Wikipedia page. Only use metric measurements (cm) for height and sizes, ignoring any imperial (inches) tables."
+        try:
+            from crawl4ai import LLMConfig
+            strategy = LLMExtractionStrategy(
+                llm_config=LLMConfig(provider="gemini/gemini-2.5-flash", api_token=api_key),
+                instruction=instruction,
+                schema=ActressProfileSchema.model_json_schema(),
+                extraction_type="schema",
+                force_json_response=True
+            )
+            config = CrawlerRunConfig(extraction_strategy=strategy)
+            result = await web_crawler.arun(url=valid_url, config=config)
+            
+            if result.extracted_content:
+                try:
+                    data = json.loads(result.extracted_content)
+                    if isinstance(data, list) and len(data) > 0:
+                        return data[0]
+                    elif isinstance(data, dict):
+                        return data
+                except json.JSONDecodeError:
+                    print("Failed to parse LLM JSON response.")
+        except Exception as e:
+            print(f"LLM extraction failed: {e}")
+            
+        return None
 
     async def _scan_star_pages(self, star_url: str, actor_name: str, web_crawler: AsyncWebCrawler):
         print(f"\n--- Scanning full list for actor: {actor_name} ---")
@@ -1183,9 +1401,73 @@ class Crawler:
         if cover_url and not cover_url.startswith('http'):
             cover_url = "https://www.javbus.com" + cover_url
             
-        samples = [img['src'] if img['src'].startswith('http') else "https://www.javbus.com" + img['src'] 
+        samples = [img['src'] if img['src'].startswith('http') else "https://www.javbus.com" + img['src']
                    for img in soup.select('.sample-box img')]
-                   
+
+        detail = {
+            'id': scene_id,
+            'title': title,
+            'cover_image': cover_url,
+            'sample_images': samples,
+            'page_url': url
+        }
+
+        info_block = soup.select_one(".col-md-3.info") or soup.select_one(".info")
+        if info_block:
+            for p in info_block.select("p"):
+                text = p.get_text(separator=' ', strip=True)
+                if "識別碼:" in text or "ID:" in text:
+                    detail["id"] = text.split(":")[-1].strip()
+                elif "發行日期:" in text:
+                    detail["release_date"] = text.split(":")[-1].strip()
+                elif "長度:" in text:
+                    detail["length"] = text.split(":")[-1].strip()
+                elif "導演:" in text:
+                    detail["director"] = text.split(":")[-1].strip()
+                elif "製作商:" in text:
+                    detail["studio"] = text.split(":")[-1].strip()
+                elif "發行商:" in text:
+                    detail["label"] = text.split(":")[-1].strip()
+
+            genres = []
+            for span in info_block.select("span.genre a[href*='/genre/']"):
+                genres.append(span.text.strip())
+            if genres:
+                detail["genres"] = genres
+
+            performers = []
+            seen = set()
+            for a in info_block.select("a[href*='/star/']"):
+                p_name = a.text.strip()
+                p_url = a.get('href', '')
+                if p_name and p_url and p_url not in seen:
+                    if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
+                    
+                    primary_name, credited_as = self._resolve_actor_name(p_name)
+                    p_data = {"name": primary_name, "url": p_url}
+                    if credited_as:
+                        p_data["credited_as"] = credited_as
+                        
+                    performers.append(p_data)
+                    seen.add(p_url)
+            detail["performers"] = performers
+        else:
+            # Fallback for performers
+            performers = []
+            for a in soup.select('a[href*="/star/"]'):
+                p_name = a.text.strip()
+                p_url = a.get('href', '')
+                if p_name and p_url:
+                    if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
+                    
+                    primary_name, credited_as = self._resolve_actor_name(p_name)
+                    p_data = {"name": primary_name, "url": p_url}
+                    if credited_as:
+                        p_data["credited_as"] = credited_as
+                        
+                    performers.append(p_data)
+            detail["performers"] = performers
+
         magnets = []
         for tr in soup.select('#magnet-table tr'):
             links = tr.select('a')
@@ -1196,23 +1478,15 @@ class Crawler:
                     'total_size': links[1].text.strip(),
                     'date': links[2].text.strip()
                 })
-                
-        data = {
-            'id': scene_id,
-            'title': title,
-            'cover_image': cover_url,
-            'sample_images': samples,
-            'magnet_entries': magnets,
-            'page_url': url
-        }
-        
-        detail_dir = self.media_dir / scene_id
+
+        detail['magnet_entries'] = magnets
+
+        detail_dir = self.media_dir / detail['id']
         detail_dir.mkdir(parents=True, exist_ok=True)
-        detail_file = detail_dir / f"{scene_id}.json"
-        
+        detail_file = detail_dir / f"{detail['id']}.json"
+
         with open(detail_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            
+            json.dump(detail, f, ensure_ascii=False, indent=2)
         print(f"Wrote {detail_file}")
         
         if self.config.run_download:
@@ -1329,6 +1603,7 @@ async def main():
     parser.add_argument("--mcp-match", type=str, help="Match MCP JSON output file against the current actor list file")
     parser.add_argument("--package", type=str, help="Create a release zip with the given version")
     parser.add_argument("--native-fetch", action="store_true", help="Use lightweight native HTTP/BS4 instead of headless browser")
+    parser.add_argument("--llm-enrich", action="store_true", help="Use LLM to enrich missing actor profile data via Wikipedia")
 
     args = parser.parse_args()
     config = CrawlerConfig()
@@ -1357,6 +1632,7 @@ async def main():
     config.sync_to_stash = args.sync_to_stash
     config.sync_type = args.sync_type
     config.native_fetch = args.native_fetch
+    config.llm_enrich = args.llm_enrich
     config.rebuild_host = args.rebuild_host if args.rebuild_host is not None else config.rebuild_host
     config.rebuild_path = args.rebuild_path if args.rebuild_path is not None else config.rebuild_path
 

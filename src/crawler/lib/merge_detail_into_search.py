@@ -13,7 +13,8 @@ from pathlib import Path
 
 FIELDS_TO_MERGE = [
     'sample_images', 'actors', 'tags', 'duration', 'duration_minutes',
-    'cover_image', 'page_url', 'play_url', 'released_date', 'maker', 'publisher', 'magnet_links'
+    'cover_image', 'page_url', 'play_url', 'released_date', 'maker', 'publisher', 'magnet_links',
+    'release_date', 'length', 'director', 'studio', 'label', 'genres', 'performers'
 ]
 
 
