@@ -125,6 +125,7 @@ class CrawlerConfig:
     rebuild_host: str = "winsonsun@192.168.20.24"
     rebuild_path: str = "/mnt/cig/video/{category}"
     llm_enrich: bool = False
+    magnet_max_age_days: int = 365
 
 def parse_size_to_gb(size_str: str) -> float:
     if not size_str: return 0.0
@@ -602,6 +603,18 @@ class Crawler:
 
         return BeautifulSoup(html, 'lxml')
 
+    def _is_magnet_recent(self, date_str: str) -> bool:
+        if not date_str:
+            return True # Keep if we can't tell
+        try:
+            # Javbus format is typically YYYY-MM-DD
+            mag_date = datetime.datetime.strptime(date_str.strip(), "%Y-%m-%d")
+            limit_date = datetime.datetime.now() - datetime.timedelta(days=self.config.magnet_max_age_days)
+            return mag_date >= limit_date
+        except ValueError:
+            # If format changes or is malformed, fail open (keep it)
+            return True
+
     def _check_and_save_magnets(self, scene_id: str):
         detail_file = self.media_dir / scene_id / f"{scene_id}.json"
         if detail_file.exists():
@@ -618,6 +631,8 @@ class Crawler:
                             existing_lines = mf.read().splitlines()
                             
                     for mag in ddata.get('magnet_entries', []):
+                        if not self._is_magnet_recent(mag.get('date', '')):
+                            continue
                         size_gb = parse_size_to_gb(mag.get('total_size', ''))
                         if size_gb > 1.2:
                             uri = mag.get('uri')
@@ -1386,9 +1401,12 @@ class Crawler:
         if self.config.rebuild_host:
             print(f"Rebuilding {out_file} via SSH ({self.config.rebuild_host}:{base})...")
             import subprocess
-            cmd = f'ssh {self.config.rebuild_host} "find {base} -maxdepth 2 -type d"'
+            # Escaping the $ so they are passed to the remote shell literally
+            remote_cmd = f'find {base} -maxdepth 2 -mindepth 2 -type d | while read -r d; do sz=$(find "$d" -maxdepth 1 -type f -exec ls -s --block-size=1M {{}} + | sort -nr | head -n1 | awk "{{print \\$1}}"); echo -e "${{sz:-0}}\\t$d"; done'
+            cmd = ['ssh', self.config.rebuild_host, remote_cmd]
             try:
-                output = subprocess.check_output(cmd, shell=True).decode('utf-8')
+                # Using a list for check_output is safer and avoids most shell escaping hell
+                output = subprocess.check_output(cmd).decode('utf-8')
             except Exception as e:
                 print(f"Failed to rebuild list via SSH: {e}")
                 return
@@ -1396,8 +1414,9 @@ class Crawler:
             print(f"Rebuilding {out_file} via local filesystem ({base})...")
             try:
                 import subprocess
-                cmd = f'find {base} -maxdepth 2 -type d'
-                output = subprocess.check_output(cmd, shell=True).decode('utf-8')
+                # Local version doesn't need as much escaping but we keep it consistent
+                local_cmd = f'find {base} -maxdepth 2 -mindepth 2 -type d | while read -r d; do sz=$(find "$d" -maxdepth 1 -type f -exec ls -s --block-size=1M {{}} + | sort -nr | head -n1 | awk "{{print \\$1}}"); echo -e "${{sz:-0}}\\t$d"; done'
+                output = subprocess.check_output(local_cmd, shell=True).decode('utf-8')
             except Exception as e:
                 print(f"Failed to rebuild list locally: {e}")
                 return
@@ -1406,17 +1425,30 @@ class Crawler:
         actor_data = {}
         for line in lines:
             line = line.strip()
-            if line == base or not line.startswith(base): continue
-            rel = line[len(base):].lstrip('/')
+            if not line: continue
+            parts_line = line.split('\t')
+            if len(parts_line) < 2: continue
+            
+            try:
+                size_mb = int(parts_line[0])
+            except ValueError:
+                size_mb = 0
+            full_path = parts_line[1]
+            
+            if not full_path.startswith(base): continue
+            rel = full_path[len(base):].lstrip('/')
             parts = rel.split('/')
+            
             if len(parts) >= 1:
                 actress = parts[0]
-                if actress not in actor_data: actor_data[actress] = []
+                if actress not in actor_data: actor_data[actress] = {}
                 if len(parts) >= 2:
-                    actor_data[actress].append(parts[1])
+                    scene_id = parts[1]
+                    # Store largest file size in MB
+                    actor_data[actress][scene_id] = size_mb
         with open(out_file, 'w', encoding='utf-8') as f:
             json.dump(actor_data, f, ensure_ascii=False, indent=2)
-        print(f"Rebuilt {out_file} with {len(actor_data)} actresses.")
+        print(f"Rebuilt {out_file} (Optimized) with {len(actor_data)} actresses.")
 
     async def mcp_match(self, file_path: str):
         list_file = self.config.ain_list_file
@@ -1605,6 +1637,8 @@ class Crawler:
         # Append magnets
         magnet_file = self.config.magnet_output_file
         for mag in magnets:
+            if not self._is_magnet_recent(mag.get('date', '')):
+                continue
             gb = parse_size_to_gb(mag['total_size'])
             if gb > 1.2:
                 os.makedirs(os.path.dirname(magnet_file), exist_ok=True)
@@ -1681,6 +1715,18 @@ def parse_time(time_str: str) -> float:
 
 async def main():
     import argparse
+    
+    # 1. Load defaults from config/crawler.json
+    crawler_json_path = os.path.join(CRAW_CONF, "crawler.json")
+    crawler_defaults = {}
+    if os.path.exists(crawler_json_path):
+        try:
+            with open(crawler_json_path, "r", encoding="utf-8") as f:
+                crawler_defaults = json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load {crawler_json_path}: {e}")
+
+    # 2. Setup Parser with Defaults from JSON
     parser = argparse.ArgumentParser(description="Crawler for javdb-like pages")
     parser.add_argument("scene", nargs='*', help="One or more scene identifiers to process")
     parser.add_argument("--site", default="javdb", help="Site key to use from SITE_REGISTRY")
@@ -1696,10 +1742,10 @@ async def main():
     parser.add_argument("--logdir", default=".", help="Directory to save verbose output files")
     parser.add_argument("--input-file", help="JSON file with a list of scenes to process")
     parser.add_argument("--retry-limit", type=int, default=None, help="Number of retries")
-    parser.add_argument("--min-delay", type=str, default="10s", help="Min delay")
-    parser.add_argument("--max-delay", type=str, default="90s", help="Max delay")
+    parser.add_argument("--min-delay", type=str, default=crawler_defaults.get("min_delay", "10s"), help="Min delay")
+    parser.add_argument("--max-delay", type=str, default=crawler_defaults.get("max_delay", "90s"), help="Max delay")
     parser.add_argument("--user-data-dir", default="./chrome-profile", help="Chrome profile path")
-    parser.add_argument("--user-agent", default=None, help="Custom User-Agent")
+    parser.add_argument("--user-agent", default=crawler_defaults.get("user_agent"), help="Custom User-Agent")
     parser.add_argument("--dry-run", action="store_true", help="Dry run")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--discover", action="store_true", help="Discovery mode")
@@ -1711,19 +1757,22 @@ async def main():
     parser.add_argument("--active-scan", default=os.path.join(CRAW_CONF, "active_scan.json"), help="Active scan file")
     parser.add_argument("--magnet-output", default=os.path.join(CRAW_DATA, "output", "to-be-downloaded.txt"), help="File to append magnets to")
     parser.add_argument("--download-actor-covers", default="", help="Download all covers for the specified actor")
-    parser.add_argument("--stash-url", default="http://192.168.20.24:9999/graphql", help="Stash GraphQL URL")
+    parser.add_argument("--stash-url", default=crawler_defaults.get("stash_url", "http://localhost:9999/graphql"), help="Stash GraphQL URL")
     parser.add_argument("--sync-to-stash", default="", help="Sync all scenes for the specified group to Stash")
     parser.add_argument("--sync-type", default="performer", choices=["performer", "tag", "studio"], help="Type of entity to sync (default: performer)")
     parser.add_argument("--rebuild-list", type=str, metavar="CATEGORY", help="Rebuild <category>_list.json via SSH (e.g. ain, cin, golden)")
-    parser.add_argument("--rebuild-host", type=str, help="SSH connection string (default: winsonsun@192.168.20.24)")
-    parser.add_argument("--rebuild-path", type=str, help="Path template for indexing (default: /mnt/cig/video/{category})")
+    parser.add_argument("--rebuild-host", type=str, default=crawler_defaults.get("rebuild_host", "winsonsun@192.168.20.24"), help="SSH connection string")
+    parser.add_argument("--rebuild-path", type=str, default=crawler_defaults.get("rebuild_path", "/mnt/cig/video/{category}"), help="Path template for indexing")
     parser.add_argument("--mcp-match", type=str, help="Match MCP JSON output file against the current actor list file")
     parser.add_argument("--package", type=str, help="Create a release zip with the given version")
     parser.add_argument("--native-fetch", action="store_true", help="Use lightweight native HTTP/BS4 instead of headless browser")
     parser.add_argument("--llm-enrich", action="store_true", help="Use LLM to enrich missing actor profile data via Wikipedia")
+    parser.add_argument("--magnet-max-age", type=int, default=crawler_defaults.get("magnet_max_age_days", 365), 
+                        help="Maximum age of magnets in days")
 
     args = parser.parse_args()
     config = CrawlerConfig()
+    config.magnet_max_age_days = args.magnet_max_age
     config.user_agent = args.user_agent or os.environ.get("USER_AGENT") or config.user_agent
     config.site = args.site
     config.merge_detail = args.merge_detail

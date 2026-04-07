@@ -1,134 +1,131 @@
 # Scene Crawler
 
-This project is a command-line tool for crawling, parsing, and downloading information about scenes from various websites.
+A professional-grade command-line tool for crawling, parsing, and managing media metadata. Optimized with target-state idempotency, high-quality filtering, and seamless integration with Stash and Deluge.
 
-## Requirements
+## Key Features
 
-*   Python 3.7+
-*   Google Chrome (optional, for cookie importing)
+- **Architectural Caching**: Smart idempotency skips already-downloaded scenes and images.
+- **Stash Integration**: Automated metadata and cover enrichment for Stash servers with whitelist filtering.
+- **Deluge Automation**: Automated management of torrents (filtering by age, size, and repository status).
+- **SSH Repository Scanning**: Fast, stat-based scanning of remote video libraries to build canonical lists.
+- **Freshness Control**: Configurable "max-age" filtering to keep your download queue relevant.
 
 ## Setup
 
-1.  **Create a virtual environment:**
+1.  **Virtual Environment**:
     ```bash
     python3 -m venv venv
     source venv/bin/activate
     ```
-2.  **Install the project in editable mode:**
-    This will install all dependencies from `pyproject.toml` and make the `crawler` command available.
+2.  **Install Dependencies**:
     ```bash
     pip install -e .
+    pip install "aiohttp-client-cache[sqlite]"
     ```
 
-## Environment Variables
+## Configuration (`config/crawler.json`)
 
-The crawler uses the following environment variables to manage paths. If not set, they default to local directories.
+The crawler uses a central JSON file for environment-specific defaults. Edit this file to manage your server addresses:
 
-*   `CRAW_CONF`: The directory where configuration files (like `sites.json`, `active_scan.json`, `rename_policy.json`) are stored. Defaults to `./config`.
-*   `CRAW_DATA`: The directory where data files (like `list/`, `output/`) are stored. Defaults to `./data`.
-
-## Handling Human Verification (Cloudflare)
-
-Modern websites often use services like Cloudflare to block bots. To bypass this, the crawler uses a persistent browser session where you have manually solved the "human verification" challenge once.
-
-The workflow involves a one-time setup script and then running the main crawler.
-
-### Step 1: Create the Browser Profile (One-Time Setup)
-
-This step launches a visible Chrome browser. You will use it to solve the CAPTCHA, which saves a "clearance cookie" to a reusable profile directory.
-
-1.  **Run the setup script on your server:**
-    This command starts the browser on your server and opens a special "debugging" port so you can control it from your local machine. Port `9222` is a common choice.
-    ```bash
-    python setup_profile.py --remote-debugging-port=9222
-    ```
-2.  **Create a secure tunnel from your local machine:**
-    Open a **new terminal** on your local computer and run the following `ssh` command. This securely forwards the remote browser's port to your local machine.
-    *(Replace `your_user@your_server_ip` with your server's credentials.)*
-    ```bash
-    ssh -L 9222:localhost:9222 your_user@your_server_ip
-    ```
-    Keep this terminal open.
-
-3.  **Connect and control the remote browser:**
-    On your **local machine**, open your regular Chrome browser and navigate to `chrome://inspect`.
-    *   Click the **"Configure..."** button and add `localhost:9222` to the list of targets.
-    *   After a few seconds, a remote target will appear. Click the **"inspect"** link.
-    *   A new window will pop up that is a **live view** of the browser on your server. Use this window to go to the target website (e.g., `javdb.com`) and solve the human verification challenge.
-    *   Once you see the real website, the cookie is saved. You can close the remote control window and stop the `setup_profile.py` script on the server (`Ctrl+C`).
-
-### Step 2: Run the Crawler
-
-With the profile created, you can now run the main crawler. It will automatically use the session from the profile directory and bypass the Cloudflare challenge.
-
-```bash
-# The crawler command is available because we installed with 'pip install -e .'
-crawler --input-file your_scenes.json
-```
-The crawler will use the default profile path (`./chrome-profile`). You can specify a different path with the `--user-data-dir` argument.
-
-## Usage
-
-The main entry point is the `crawler` command.
-
-### Basic Usage
-
-To crawl a single scene:
-```bash
-crawler MIST-001
-```
-To crawl multiple scenes:
-```bash
-crawler MIST-001 PPPE-378
-```
-
-### Discovery Mode
-
-To discover new scenes on a site:
-```bash
-crawler --discover --site javbus --start-page 1 --pages 2
-```
-
-To filter discovery by an actor list (Note: `--ain-list` must be explicitly specified if used):
-```bash
-crawler --discover --site javbus --ain-list data/list/ain_list.json
-```
-
-### Using an Input File
-```bash
-crawler --input-file your_scenes.json
-```
-The JSON file can be a simple list of strings, or a dictionary with a "scenes" key and retry/delay behavior:
 ```json
 {
-  "scenes": [
-    "MIST-001",
-    "PPPE-378"
-  ],
-  "retry-limit": 5,
-  "min-delay": "5s",
-  "max-delay": "30s"
+  "magnet_max_age_days": 365,
+  "rebuild_host": "winsonsun@100.64.26.2",
+  "rebuild_path": "/mnt/cig/video/{category}",
+  "stash_url": "http://100.64.26.2:9999/graphql",
+  "deluge_url": "http://100.64.26.2:8112",
+  "deluge_pass": "deluge",
+  "deluge_batch_size": 50
 }
 ```
-### Command-Line Arguments
-For a full list of command-line arguments, run:
+
+---
+
+## 1. Main Crawler Usage
+
+### Basic Crawling
 ```bash
-crawler -h
+# Crawl specific IDs
+crawler MIST-001 OFJE-588 --run-parse --run-download --download-image
+
+# Lightweight "Native" mode (Fastest, bypasses browser)
+crawler MIST-001 --native-fetch --run-parse
 ```
-### Project Structure
-The project has the following directory structure:
-*   `config/`: Configuration files (managed by `CRAW_CONF`).
-    *   `sites.json`: The site configuration file.
-    *   `active_scan.json`: Cache for actor collection URLs.
-    *   `rename_policy.json`: Rules for the renaming tool.
-*   `data/`: Data storage (managed by `CRAW_DATA`).
-    *   `list/`: Actor/Category lists (e.g., `ain_list.json`).
-    *   `output/`: Generated files like `to-be-downloaded.txt`.
-    *   `media_detail/`: Parsed scene details (JSON).
-    *   `actress/`: Actor profiles and media lists.
-*   `src/crawler/`: Main application source code.
-    *   `crawler.py`: The main script and orchestrator.
-    *   `sites/`: Contains the site-specific parsers.
-    *   `lib/`: Contains shared library code.
-*   `tests/`: Unit and integration tests.
-*   `pyproject.toml`: The project definition and dependency list.
+
+### Discovery & Collection Scanning
+```bash
+# Discover first 4 pages of latest releases
+crawler --discover --pages 4 --site javbus --run-parse
+
+# Scan an actor's entire career (uses active_scan.json)
+crawler "葵つかさ" --collection-scan --site javbus --run-parse
+```
+
+### Repository Management
+Build canonical JSON lists of your local library by scanning your server via SSH:
+```bash
+# Generate ain_list.json with file sizes for quality filtering
+crawler --rebuild-list ain
+```
+
+### Stash Enrichment
+Sync metadata and covers to your Stash server. If `--ain-list` is provided, it **whitelists** only the videos you actually own on disk.
+```bash
+crawler --sync-to-stash "葵つかさ" --ain-list data/list/ain_list.json
+```
+
+---
+
+## 2. Deluge Maintenance Tool (`scripts/deluge_filter.py`)
+
+Manage your Deluge server queue intelligently.
+
+- **Quality Filter**: Keeps torrents if they are >500MB larger than your archived version.
+- **Junk Filter**: Automatically removes stale `[javdb.com]` items (<100MB, older than 2 days).
+- **Redundancy Filter**: Identifies items you've already archived.
+
+```bash
+# Generate a deletion plan (Dry run)
+python3 scripts/deluge_filter.py
+
+# Physically remove redundant items from server and disk
+python3 scripts/deluge_filter.py --deletion-plan
+
+# Upload new magnets from canonical_scene_id.json (Only if missing from Repo & Deluge)
+python3 scripts/deluge_filter.py --upload-new
+```
+
+---
+
+## 3. Utility Tools
+
+### `scripts/group_magnets.py`
+Groups the flat `to-be-downloaded.txt` into a structured `canonical_scene_id.json`.
+- Resolves messy filenames to Canonical IDs.
+- Removes duplicates.
+- Filters out items already present in your `data/list/` repository.
+```bash
+python3 scripts/group_magnets.py
+```
+
+### `scripts/maintenance_filter_magnets.py`
+Cleans your `to-be-downloaded.txt` based on release dates.
+```bash
+# Remove magnets for scenes older than 90 days
+python3 scripts/maintenance_filter_magnets.py --days 90
+```
+
+### `scripts/rename_tool.py`
+A standalone tool to batch rename local files using the project's canonical naming policy.
+```bash
+python3 scripts/rename_tool.py /path/to/your/videos --dry-run
+```
+
+---
+
+## Project Structure
+- `src/crawler/`: Core logic, parsers, and Stash/Deluge clients.
+- `config/`: Configuration (Managed by `CRAW_CONF`).
+- `data/`: Local storage for profiles, metadata, and images (Managed by `CRAW_DATA`).
+- `scripts/`: Maintenance and management utilities.
+- `tests/`: Architectural and functional test suites.
