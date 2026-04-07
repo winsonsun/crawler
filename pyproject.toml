@@ -16,6 +16,7 @@ dependencies = [
     "crawl4ai",
     "browser_cookie3",
     "tenacity",
+    "aiohttp-client-cache[sqlite]",
 ]
 
 [project.scripts]

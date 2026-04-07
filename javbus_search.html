@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="IE=edge" http-equiv="X-UA-Compatible"/>
+  <meta content="webkit" name="renderer"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   葵つかさ - 搜尋 - 影片 - JavBus
+  </title>
+  <meta content="" name="keywords"/>
+  <meta content="" name="description"/>
+  <link href="https://www.javbus.com/en/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95" hreflang="en" rel="alternate"/>
+  <link href="https://www.javbus.com/ja/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95" hreflang="ja" rel="alternate"/>
+  <link href="https://www.javbus.com/ko/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95" hreflang="ko" rel="alternate"/>
+  <link href="https://www.javbus.com/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95" hreflang="zh" rel="alternate"/>
+  <link href="https://www.javbus.com/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95" hreflang="x-default" rel="alternate"/>
+  <link href="https://www.javbus.com/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95" rel="canonical"/>
+  <link crossorigin="" href="https://poweredby.jads.co" rel="preconnect"/>
+  <link href="https://poweredby.jads.co" rel="dns-prefetch"/>
+  <link href="https://www.javbus.com/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://www.javbus.com/css/bootstrap-theme.min.css" rel="stylesheet"/>
+  <link href="https://www.javbus.com/css/css-slider.css?v=9.3" rel="stylesheet"/>
+  <link href="https://www.javbus.com/css/nav.overlay.css?v=3.9.8" rel="stylesheet"/>
+  <link href="https://www.javbus.com/css/magnific-popup.css" rel="stylesheet"/>
+  <link href="https://www.javbus.com/css/base.css?v=7.15" rel="stylesheet"/>
+  <script src="https://www.javbus.com/js/jquery.min.js">
+  </script>
+  <script src="https://www.javbus.com/js/jquery.magnific-popup.min.js">
+  </script>
+  <script defer="" src="https://www.javbus.com/js/bootstrap.min.js">
+  </script>
+  <script defer="" src="https://www.javbus.com/js/jquery.cookie.min.js">
+  </script>
+  <script defer="" src="https://www.javbus.com/js/base.js">
+  </script>
+  <script defer="" src="https://www.javbus.com/js/bootstrap-hover-dropdown.js">
+  </script>
+  <script defer="" src="https://www.javbus.com/js/nav.overlay.js?v=10.30.3">
+  </script>
+  <!--[if lt IE 9]> <script src="https://www.javbus.com/js/html5shiv.min.js"></script><script src="https://www.javbus.com/js/respond.min.js"></script><![endif]-->
+ </head>
+ <body>
+  <script language="JavaScript">
+   var mod = 0;
+var lang = 'zh';
+var info = '搜尋 識別碼, 影片, 演員';
+function searchs(obj){
+	var searchinput = $("#"+obj);
+	if(searchinput.val()=='')
+	{
+		$('#magnet-url-post').trigger("click");	
+		   return false;
+	}
+	else
+	{
+		//$('#search-loading').show();str.replace(/ /g, "-")
+		window.open("https://www.javbus.com/search/"+encodeURIComponent($.trim(searchinput.val()).replace(/ /g,"+"))+"&type=0&parent=ce");
+	}
+}
+
+$(function(){
+		
+	var url ='https://www.javbus.com/ajax/search-modal.php?floor='+Math.floor(Math.random()*1000+1)+'&lang='+lang;
+       $.ajax({url: url,type: 'GET',success: function(msg){
+			$("#searchModal").append(msg);										  
+	   }});
+});
+  </script>
+  <div id="search-loading">
+   <table border="0" cellpadding="0" cellspacing="0" class="search-loading-box">
+    <tbody>
+     <tr>
+      <td align="center">
+       <table border="0" cellpadding="0" cellspacing="0" height="80" width="100%">
+        <tbody>
+         <tr>
+          <td align="center" height="40">
+           <div class="search-loading-text">
+            搜尋中...
+           </div>
+          </td>
+         </tr>
+         <tr>
+          <td align="center" height="40">
+           <img border="0" src="https://www.javbus.com/images/search_loading.gif"/>
+          </td>
+         </tr>
+        </tbody>
+       </table>
+      </td>
+     </tr>
+    </tbody>
+   </table>
+  </div>
+  <!-- Modal Search -->
+  <div class="modal fade" id="searchModal" role="dialog" tabindex="-1">
+  </div>
+  <nav class="navbar navbar-default navbar-fixed-top top-bar" style="z-index:900">
+   <div class="container-fluid">
+    <div class="navbar-header mh50">
+     <a href="https://www.javbus.com/">
+      <img alt="JavBus" class="hidden-xs" height="50" src="https://www.javbus.com/images/logo.png" style="height:40px; margin-top:5px;"/>
+      <img alt="JavBus" class="visible-xs-inline" height="50" src="https://www.javbus.com/images/logo.png"/>
+     </a>
+     <div class="btn-group pull-right visible-xs-inline" role="group" style="margin:8px 8px 0 0;">
+      <button aria-expanded="false" class="btn btn-default dropdown-toggle" data-toggle="dropdown" type="button">
+       <span class="glyphicon glyphicon-globe">
+       </span>
+       <span class="caret">
+       </span>
+      </button>
+      <ul class="dropdown-menu" role="menu">
+       <li>
+        <a href="https://www.javbus.com/en/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+         English
+        </a>
+       </li>
+       <li>
+        <a href="https://www.javbus.com/ja/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+         日本语
+        </a>
+       </li>
+       <li>
+        <a href="https://www.javbus.com/ko/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+         한국의
+        </a>
+       </li>
+       <li>
+        <a href="https://www.javbus.com/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+         中文
+        </a>
+       </li>
+      </ul>
+     </div>
+     <div class="btn-group pull-right visible-xs-inline" role="group" style="margin:8px 8px 0 0;">
+      <button aria-expanded="false" class="btn btn-default dropdown-toggle" data-toggle="dropdown" type="button">
+       <span class="glyphicon glyphicon-magnet">
+       </span>
+       <span class="caret">
+       </span>
+      </button>
+      <ul class="dropdown-menu" role="menu">
+       <li id="cellshowall">
+        <a>
+         <span class="glyphicon glyphicon-film">
+         </span>
+         全部影片
+        </a>
+       </li>
+      </ul>
+     </div>
+    </div>
+    <div class="collapse navbar-collapse" id="navbar">
+     <div class="navbar-form navbar-left fullsearch-form">
+      <div class="input-group">
+       <input class="form-control" id="search-input" placeholder="搜尋 識別碼, 影片, 演員" type="text"/>
+       <span class="input-group-btn">
+        <button class="btn btn-default" onclick="searchs('search-input')" type="submit">
+         搜尋
+        </button>
+       </span>
+      </div>
+     </div>
+     <ul class="nav navbar-nav">
+      <li class="active">
+       <a href="https://www.javbus.com/">
+        有碼
+       </a>
+      </li>
+      <li>
+       <a href="https://www.javbus.com/uncensored">
+        無碼
+       </a>
+      </li>
+      <li class="hidden-md hidden-sm">
+       <!-- <div class="icon-new"></div> -->
+       <a href="https://www.javbus.org/">
+        歐美
+       </a>
+      </li>
+      <li class="dropdown hidden-sm">
+       <a aria-expanded="false" class="dropdown-toggle" data-hover="dropdown" data-toggle="dropdown" href="#" role="button">
+        類別
+        <span class="caret">
+        </span>
+       </a>
+       <ul class="dropdown-menu" role="menu">
+        <li>
+         <a href="https://www.javbus.com/genre">
+          有碼類別
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/uncensored/genre">
+          無碼類別
+         </a>
+        </li>
+       </ul>
+      </li>
+      <li class="dropdown hidden-sm">
+       <a aria-expanded="false" class="dropdown-toggle" data-hover="dropdown" data-toggle="dropdown" href="#" role="button">
+        女優
+        <span class="caret">
+        </span>
+       </a>
+       <ul class="dropdown-menu" role="menu">
+        <li>
+         <a href="https://www.javbus.com/actresses">
+          有碼女優
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/uncensored/actresses">
+          無碼女優
+         </a>
+        </li>
+       </ul>
+      </li>
+      <li class="dropdown">
+       <a aria-expanded="false" class="dropdown-toggle" data-hover="dropdown" data-toggle="dropdown" href="https://www.javbus.com/" role="button">
+        <span class="glyphicon glyphicon-menu-hamburger">
+        </span>
+       </a>
+       <ul class="dropdown-menu" role="menu">
+        <li class="visible-md-block visible-sm-block">
+         <a href="https://www.javbus.org/">
+          歐美
+         </a>
+        </li>
+        <li class="visible-sm-block">
+         <a href="https://www.javbus.com/genre">
+          有碼類別
+         </a>
+        </li>
+        <li class="visible-sm-block">
+         <a href="https://www.javbus.com/uncensored/genre">
+          無碼類別
+         </a>
+        </li>
+        <li class="visible-sm-block">
+         <a href="https://www.javbus.com/actresses">
+          有碼女優
+         </a>
+        </li>
+        <li class="visible-sm-block">
+         <a href="https://www.javbus.com/uncensored/actresses">
+          無碼女優
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/genre/hd">
+          高清
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/genre/sub">
+          字幕
+         </a>
+        </li>
+       </ul>
+      </li>
+     </ul>
+     <ul class="nav navbar-nav navbar-right">
+      <li class="dropdown">
+       <a aria-expanded="false" class="dropdown-toggle" data-hover="dropdown" data-toggle="dropdown" href="#" role="button">
+        <span class="glyphicon glyphicon-globe" style="font-size:12px;">
+        </span>
+        <span class="hidden-md hidden-sm">
+         English
+        </span>
+        <span class="caret">
+        </span>
+       </a>
+       <ul class="dropdown-menu" role="menu">
+        <li>
+         <a href="https://www.javbus.com/en/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+          English
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/ja/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+          日本语
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/ko/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+          한국의
+         </a>
+        </li>
+        <li>
+         <a href="https://www.javbus.com/search/%E8%91%B5%E3%81%A4%E3%81%8B%E3%81%95">
+          中文
+         </a>
+        </li>
+       </ul>
+      </li>
+     </ul>
+     <ul class="nav navbar-nav navbar-right">
+      <li class="dropdown">
+       <a aria-expanded="false" class="dropdown-toggle" data-hover="dropdown" data-toggle="dropdown" href="#" role="button">
+        <span class="glyphicon glyphicon-magnet" style="font-size:12px;">
+        </span>
+        <span class="hidden-md hidden-sm">
+         已有磁力
+        </span>
+        <span class="caret">
+        </span>
+       </a>
+       <ul class="dropdown-menu" role="menu">
+        <li class="mypointer" id="showall">
+         <a>
+          <span class="glyphicon glyphicon-film">
+          </span>
+          全部影片
+         </a>
+        </li>
+       </ul>
+      </li>
+     </ul>
+    </div>
+    <!--/.nav-collapse -->
+   </div>
+  </nav>
+  <div class="row visible-xs-inline footer-bar">
+   <div class="col-xs-3 text-center">
+    <a class="btn btn-default trigger-overlay" id="menu">
+     <span class="glyphicon glyphicon-align-justify">
+     </span>
+    </a>
+   </div>
+   <div class="col-xs-3 text-center">
+   </div>
+   <div class="col-xs-3 text-center">
+    <a class="btn btn-default" href="/search/葵つかさ/2" id="prev" style="display:none">
+     <span class="glyphicon glyphicon-chevron-right">
+     </span>
+    </a>
+   </div>
+   <div class="col-xs-3 text-center">
+    <a class="btn btn-default" href="javascript:window.history.back()" id="back">
+     <span class="glyphicon glyphicon-share-alt flipx">
+     </span>
+    </a>
+   </div>
+  </div>
+  <script src="https://www.javbus.com/js/focus.js?v=8.7">
+  </script>
+  <link href="https://www.javbus.com/css/main.css" rel="stylesheet" type="text/css"/>
+  <script src="https://www.javbus.com/js/jquery.masonry.min.js">
+  </script>
+  <div class="container-fluid">
+   <div class="row">
+    <div class="ad-box all-top">
+     <div class="ad-item">
+      <div class="ad-juicy">
+       <script async="" data-cfasync="false" src="https://poweredby.jads.co/js/jads.js" type="text/javascript">
+       </script>
+       <ins data-height="90" data-width="728" id="1024542">
+       </ins>
+       <script async="" data-cfasync="false" type="text/javascript">
+        (adsbyjuicy = window.adsbyjuicy || []).push({"adzone":1024542});
+       </script>
+      </div>
+     </div>
+    </div>
+    <div class="alert alert-success alert-common">
+     <p>
+      <b>
+       葵つかさ - 搜尋 - 影片 - JavBus
+      </b>
+      ： 當前顯示
+      <b>
+       <a class="mypointer" id="resultshowmag">
+        <span class="glyphicon glyphicon-magnet">
+        </span>
+        已有磁力 214
+       </a>
+      </b>
+      部，可切換至
+      <b>
+       <a class="mypointer" id="resultshowall">
+        <span class="glyphicon glyphicon-film">
+        </span>
+        全部影片 313
+       </a>
+      </b>
+      部
+     </p>
+    </div>
+    <div class="search-header">
+     <ul class="nav nav-tabs">
+      <li class="active" role="presentation">
+       <a href="https://www.javbus.com/search/葵つかさ&amp;type=1">
+        有碼影片 (
+        <span class="glyphicon glyphicon-magnet">
+        </span>
+        214 /
+        <span class="glyphicon glyphicon-film">
+        </span>
+        313 )
+       </a>
+      </li>
+      <li role="presentation">
+       <a href="https://www.javbus.com/uncensored/search/葵つかさ&amp;type=1">
+        無碼影片 (
+        <span class="glyphicon glyphicon-magnet">
+        </span>
+        0 /
+        <span class="glyphicon glyphicon-film">
+        </span>
+        0 )
+       </a>
+      </li>
+      <li role="presentation">
+       <a href="https://www.javbus.com/searchstar/葵つかさ">
+        女優
+       </a>
+      </li>
+      <li role="presentation">
+       <a href="https://www.javbus.com/search/葵つかさ&amp;type=2">
+        導演
+       </a>
+      </li>
+      <li role="presentation">
+       <a href="https://www.javbus.com/search/葵つかさ&amp;type=3">
+        製作商
+       </a>
+      </li>
+      <li role="presentation">
+       <a href="https://www.javbus.com/search/葵つかさ&amp;type=4">
+        發行商
+       </a>
+      </li>
+      <li role="presentation">
+       <a href="https://www.javbus.com/search/葵つかさ&amp;type=5">
+        系列
+       </a>
+      </li>
+     </ul>
+    </div>
+    <div id="waterfall">
+     <div id="waterfall">
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SONE-141">
+        <div class="photo-frame">
+         <img src="/pics/thumb/aen9.jpg" title="顔面国宝‘葵つかさ’から 美顔ゼロ距離で淫語誘惑され 寝取られるAV"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          顔面国宝‘葵つかさ’から 美顔ゼロ距離で淫語誘惑され 寝取られるAV
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SONE-141
+          </date>
+          /
+          <date>
+           2024-04-05
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SONE-059">
+        <div class="photo-frame">
+         <img src="/pics/thumb/a9bj.jpg" title="容姿端麗の女上司とまさかの相部屋 AM0:00 酔った先輩は童貞の僕でも押せばヤレそうです 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          容姿端麗の女上司とまさかの相部屋 AM0:00 酔った先輩は童貞の僕でも押せばヤレそうです 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SONE-059
+          </date>
+          /
+          <date>
+           2024-02-09
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSIS-865">
+        <div class="photo-frame">
+         <img src="/pics/thumb/9wuo.jpg" title="憧れの美貌を持つ社長夫人がいまや夫の借金をカラダで返す未亡人 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          憧れの美貌を持つ社長夫人がいまや夫の借金をカラダで返す未亡人 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSIS-865
+          </date>
+          /
+          <date>
+           2023-09-08
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSIS-326">
+        <div class="photo-frame">
+         <img src="/pics/thumb/8rrx.jpg" title="葵つかさが皆の居る前で背後からあなたに密着ささやき逆痴●するわよ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          葵つかさが皆の居る前で背後からあなたに密着ささやき逆痴●するわよ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSIS-326
+          </date>
+          /
+          <date>
+           2022-02-18
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSIS-300">
+        <div class="photo-frame">
+         <img src="/pics/thumb/8q6n.jpg" title="彼女の綺麗なお姉さんと二人きり… 突然のベロキス、イヤラしく舐め尽くされてセックス三昧 こんな僕って最低ですか…？ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          彼女の綺麗なお姉さんと二人きり… 突然のベロキス、イヤラしく舐め尽くされてセックス三昧 こんな僕って最低ですか…？ 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSIS-300
+          </date>
+          /
+          <date>
+           2022-01-21
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSIS-145">
+        <div class="photo-frame">
+         <img src="/pics/thumb/8e4z.jpg" title="深夜23時、終電逃し出張先のポツンと一軒宿で嫌いな上司と相部屋に…。 絶倫中年オヤジにひたすらイカされ続け気がつけば朝になっていた… 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          深夜23時、終電逃し出張先のポツンと一軒宿で嫌いな上司と相部屋に…。 絶倫中年オヤジにひたすらイカされ続け気がつけば朝になっていた… 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSIS-145
+          </date>
+          /
+          <date>
+           2021-08-13
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DVAJ-005_2021-02-19">
+        <div class="photo-frame">
+         <img src="/pics/thumb/8593.jpg" title="【お得】同じサークルの大好きな彼を誘って部室でセックス。片思いだった彼のチ○ポは特別気持ちイイ！前から後ろから、何度も突き刺す激しいピストンにイカされる。「もっとシテ！」と正常位ピストン、最後はふたりで仲良く同時イキ。彼は膣中でゴム射！ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          【お得】同じサークルの大好きな彼を誘って部室でセックス。片思いだった彼のチ○ポは特別気持ちイイ！前から後ろから、何度も突き刺す激しいピストンにイカされる。「もっとシテ！」と正常位ピストン、最後はふたりで仲良く同時イキ。彼は膣中でゴム射！ 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DVAJ-005
+          </date>
+          /
+          <date>
+           2021-02-19
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1195_2021-02-19">
+        <div class="photo-frame">
+         <img src="/pics/thumb/859a.jpg" title="【お得】デビュー作なのにカメラを見続けるセックスに挑戦する美少女！ホントはカメラ見ないといけないのに、デカチンが気持ち良くて余裕なさそう。頑張ってカメラを見つめてくれるも、正常位・騎乗位・横バックとデカチン責めに苦戦。最後は濃厚精子を顔射。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          【お得】デビュー作なのにカメラを見続けるセックスに挑戦する美少女！ホントはカメラ見ないといけないのに、デカチンが気持ち良くて余裕なさそう。頑張ってカメラを見つめてくれるも、正常位・騎乗位・横バックとデカチン責めに苦戦。最後は濃厚精子を顔射。 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1195
+          </date>
+          /
+          <date>
+           2021-02-19
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-879">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7vv9.jpg" title="「ホテルで休憩しよっか」 酔いつぶれた僕が美人上司2人組に介抱され精子が枯れるまで射精させられた全裸の2次会 葵つかさ 小島みなみ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          「ホテルで休憩しよっか」 酔いつぶれた僕が美人上司2人組に介抱され精子が枯れるまで射精させられた全裸の2次会 葵つかさ 小島みなみ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-879
+          </date>
+          /
+          <date>
+           2020-10-03
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1613_2020-09-25">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7ww4.jpg" title="和服美人の華道部生徒が顧問教師とセックス！生徒のマ○コを教師のデカチンが奥まで突きまくる。気持ち良くて目がイッちゃってる？セックスの相性がいいのか、対面座位、騎乗位、バック、横バックも全部気持ちイイ！最後も正常位ピストンから顔射され放心状態！ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          和服美人の華道部生徒が顧問教師とセックス！生徒のマ○コを教師のデカチンが奥まで突きまくる。気持ち良くて目がイッちゃってる？セックスの相性がいいのか、対面座位、騎乗位、バック、横バックも全部気持ちイイ！最後も正常位ピストンから顔射され放心状態！ 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1613
+          </date>
+          /
+          <date>
+           2020-09-25
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1593_2020-08-07">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7uah.jpg" title="美人先生の顔に皆で熱いザーメンぶっかけてドロッドロにする！生徒とのセックスを見せつけ、他の生徒のチ○ポを勃起させる。手コキ、足コキでチ○ポ弄って、チ○ポで突かれながらフェラ抜き連続顔射。正常位で寝てる先生に連続顔射。イッたチ○ポも最後に顔射！ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          美人先生の顔に皆で熱いザーメンぶっかけてドロッドロにする！生徒とのセックスを見せつけ、他の生徒のチ○ポを勃起させる。手コキ、足コキでチ○ポ弄って、チ○ポで突かれながらフェラ抜き連続顔射。正常位で寝てる先生に連続顔射。イッたチ○ポも最後に顔射！ 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1593
+          </date>
+          /
+          <date>
+           2020-08-07
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1522_2020-05-01">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7ow1.jpg" title="【ソクヌキ】チ○ポ大好き若妻つかさちゃん、朝食中にムラムラセックス。夫の遅刻などおかまいなしに「チ○コ、チ○コ」と求めてくる。そんなマ○コをガンガン突くと、しまいには自分でクリを弄りだす。そんな淫乱若妻に熱いチ○ポから大量顔射 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          【ソクヌキ】チ○ポ大好き若妻つかさちゃん、朝食中にムラムラセックス。夫の遅刻などおかまいなしに「チ○コ、チ○コ」と求めてくる。そんなマ○コをガンガン突くと、しまいには自分でクリを弄りだす。そんな淫乱若妻に熱いチ○ポから大量顔射 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1522
+          </date>
+          /
+          <date>
+           2020-05-01
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1489_2020-04-17">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7o63.jpg" title="オナニスト女子は嫌い？つかさちゃん、今度はオナニーを見せ合う。アナタ目線でシコるチ○ポ見ながらオナニー。フェラもあり、指マンもありで楽しめます。最後も見せ合いっこしながら、気持ち良く射精しようね。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          オナニスト女子は嫌い？つかさちゃん、今度はオナニーを見せ合う。アナタ目線でシコるチ○ポ見ながらオナニー。フェラもあり、指マンもありで楽しめます。最後も見せ合いっこしながら、気持ち良く射精しようね。 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           DV-1489
+          </date>
+          /
+          <date>
+           2020-04-17
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1489_2020-04-10">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7nqb.jpg" title="オナニスト女子は嫌い？つかさちゃん、セックス中も指が止まらない。生粋のオナニストは、チ○ポ挿れられても、クリ弄りはやめない、電マも止まらない。チ○ポ抜いたらマ○コ弄り。チ○ポ挿れたらクリ弄り。顔射されてもマ○コ弄りでイク。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          オナニスト女子は嫌い？つかさちゃん、セックス中も指が止まらない。生粋のオナニストは、チ○ポ挿れられても、クリ弄りはやめない、電マも止まらない。チ○ポ抜いたらマ○コ弄り。チ○ポ挿れたらクリ弄り。顔射されてもマ○コ弄りでイク。 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           DV-1489
+          </date>
+          /
+          <date>
+           2020-04-10
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1478_2020-03-13">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7maj.jpg" title="捜査官つかさをイカセるな！イキそうになったらピストンストップで焦らす。イケないストレス溜まりまくり。我慢出来なくなって、自分で電マをクリに当てる彼女。最後にはちゃんとイカセてもらえるのだろうか？ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          捜査官つかさをイカセるな！イキそうになったらピストンストップで焦らす。イケないストレス溜まりまくり。我慢出来なくなって、自分で電マをクリに当てる彼女。最後にはちゃんとイカセてもらえるのだろうか？ 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1478
+          </date>
+          /
+          <date>
+           2020-03-13
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1455_2020-02-21">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7l0b.jpg" title="葵つかさちゃんをひたすらイカセまくるという作品。男優の猛者達が代わる代わるマ○コにチ○ポを挿入。空いてるお口にもチ○ポ挿入。チ○ポだけじゃなく電マも使ってイカセまくる。イキ過ぎてフラフラの彼女に容赦ないピストンの洗礼 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          葵つかさちゃんをひたすらイカセまくるという作品。男優の猛者達が代わる代わるマ○コにチ○ポを挿入。空いてるお口にもチ○ポ挿入。チ○ポだけじゃなく電マも使ってイカセまくる。イキ過ぎてフラフラの彼女に容赦ないピストンの洗礼 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1455
+          </date>
+          /
+          <date>
+           2020-02-21
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1417">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7k0c.jpg" title="汗だく汁だくセックスが好きな方へ。マ○コはすでにぐっしょり。ピストンで汁溢れてます。ここでつかさちゃんの伝家の宝刀「クリ弄り」で締まるマ○コ。汗だくセックスで色んな汁入り混じってエロ過ぎ。クリ弄り連発でチ○ポをイカす。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          汗だく汁だくセックスが好きな方へ。マ○コはすでにぐっしょり。ピストンで汁溢れてます。ここでつかさちゃんの伝家の宝刀「クリ弄り」で締まるマ○コ。汗だくセックスで色んな汁入り混じってエロ過ぎ。クリ弄り連発でチ○ポをイカす。 葵つかさ
+          <br/>
+          <div class="item-tag">
+          </div>
+          <date>
+           DV-1417
+          </date>
+          /
+          <date>
+           2020-01-31
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1408">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7jg4.jpg" title="興奮度MAXつかさちゃんのセックスはヤバイ。挿入待ちでマ○コ弄ってます。彼女の口から放たれる言葉全てが淫語にしか聞こえない。とにかくハード、とにかくエロい。そりゃこんなセックス出来たら、ザーメンも大量に出る訳だ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          興奮度MAXつかさちゃんのセックスはヤバイ。挿入待ちでマ○コ弄ってます。彼女の口から放たれる言葉全てが淫語にしか聞こえない。とにかくハード、とにかくエロい。そりゃこんなセックス出来たら、ザーメンも大量に出る訳だ 葵つかさ
+          <br/>
+          <div class="item-tag">
+          </div>
+          <date>
+           DV-1408
+          </date>
+          /
+          <date>
+           2020-01-24
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-645">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7fk0.jpg" title="ずっと憧れだった上司の妻つかささんと布団の中でこっそり密着セックスに没頭したボク。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          ずっと憧れだった上司の妻つかささんと布団の中でこっそり密着セックスに没頭したボク。 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-645
+          </date>
+          /
+          <date>
+           2019-12-14
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-567">
+        <div class="photo-frame">
+         <img src="/pics/thumb/7a4l.jpg" title="ボクを助けてくれた人事部の葵さんが犯されているのを見て鬱勃起。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          ボクを助けてくれた人事部の葵さんが犯されているのを見て鬱勃起。 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-567
+          </date>
+          /
+          <date>
+           2019-09-14
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-544">
+        <div class="photo-frame">
+         <img src="/pics/thumb/78id.jpg" title="痴漢サークルに輪姦された痴漢囮捜査官つかさ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          痴漢サークルに輪姦された痴漢囮捜査官つかさ 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-544
+          </date>
+          /
+          <date>
+           2019-08-16
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-411">
+        <div class="photo-frame">
+         <img src="/pics/thumb/6yhs.jpg" title="むっちり下半身見せつけ挑発騎乗位でハメまくるデカ尻つかさ先生 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          むっちり下半身見せつけ挑発騎乗位でハメまくるデカ尻つかさ先生 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-411
+          </date>
+          /
+          <date>
+           2019-02-16
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-367">
+        <div class="photo-frame">
+         <img src="/pics/thumb/6va2.jpg" title="超ぬるぬるローションテクニック＆黄金比ボディでご奉仕してくれる最高級巨乳つかさメイド 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          超ぬるぬるローションテクニック＆黄金比ボディでご奉仕してくれる最高級巨乳つかさメイド 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-367
+          </date>
+          /
+          <date>
+           2018-12-13
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-303">
+        <div class="photo-frame">
+         <img src="/pics/thumb/6qbi.jpg" title="僕の前でいつも極限露出誘惑してくる日焼けボディ見せつけ半裸お姉さん 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          僕の前でいつも極限露出誘惑してくる日焼けボディ見せつけ半裸お姉さん 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-303
+          </date>
+          /
+          <date>
+           2018-09-19
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SSNI-154">
+        <div class="photo-frame">
+         <img src="/pics/thumb/6gqd.jpg" title="「あなた…ごめんなさい」私、旦那がお風呂に入っている30分の間、いつも義父に抱かれています。 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          「あなた…ごめんなさい」私、旦那がお風呂に入っている30分の間、いつも義父に抱かれています。 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SSNI-154
+          </date>
+          /
+          <date>
+           2018-03-24
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1690A">
+        <div class="photo-frame">
+         <img src="/pics/thumb/67z8.jpg" title="つかさが手コキで3回も抜いてくれる瞬間を見逃すな！ 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          つかさが手コキで3回も抜いてくれる瞬間を見逃すな！ 葵つかさ
+          <br/>
+          <div class="item-tag">
+          </div>
+          <date>
+           DV-1690A
+          </date>
+          /
+          <date>
+           2017-09-09
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DV-1241_2017-06-17">
+        <div class="photo-frame">
+         <img src="/pics/thumb/63jn.jpg" title="出会って4秒で即ハメされて最後は顔射！しかもおかわりSEX 葵つかさ"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          出会って4秒で即ハメされて最後は顔射！しかもおかわりSEX 葵つかさ
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DV-1241
+          </date>
+          /
+          <date>
+           2017-06-17
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SNIS-827">
+        <div class="photo-frame">
+         <img src="/pics/thumb/5tca.jpg" title="「つかさのお尻を使ってヌいてあげる」葵つかさの桃尻マニア大集合！尻に8発！チ●ポ抜きまくり巨尻オフ会"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          「つかさのお尻を使ってヌいてあげる」葵つかさの桃尻マニア大集合！尻に8発！チ●ポ抜きまくり巨尻オフ会
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SNIS-827
+          </date>
+          /
+          <date>
+           2017-01-28
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/DVAJ-189">
+        <div class="photo-frame">
+         <img src="/pics/thumb/5q1b.jpg" title="【号外】葵つかさが降臨！発射の時はいつも一緒絶頂をむかえる快感SEXからの濃厚お掃除フェラ5時間"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          【号外】葵つかさが降臨！発射の時はいつも一緒絶頂をむかえる快感SEXからの濃厚お掃除フェラ5時間
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+          </div>
+          <date>
+           DVAJ-189
+          </date>
+          /
+          <date>
+           2016-11-13
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+      <div class="item">
+       <a class="movie-box" href="https://www.javbus.com/SNIS-694">
+        <div class="photo-frame">
+         <img src="/pics/thumb/5juk.jpg" title="童貞君のために生乳、生尻、生マ●コ見せつけ生おかずオナニーサービス。SEX夢見る童貞チ●ポを優しすぎる葵つかさは筆下ろししてあげるの？あげないの？"/>
+        </div>
+        <div class="photo-info">
+         <span>
+          童貞君のために生乳、生尻、生マ●コ見せつけ生おかずオナニーサービス。SEX夢見る童貞チ●ポを優しすぎる葵つかさは筆下ろししてあげるの？あげないの？
+          <br/>
+          <div class="item-tag">
+           <button class="btn btn-xs btn-primary" disabled="disabled" title="包含高清HD的磁力連結">
+            高清
+           </button>
+           <button class="btn btn-xs btn-warning" disabled="disabled" title="包含字幕的磁力連結">
+            字幕
+           </button>
+          </div>
+          <date>
+           SNIS-694
+          </date>
+          /
+          <date>
+           2016-07-16
+          </date>
+         </span>
+        </div>
+       </a>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+  <script language="JavaScript">
+   (function($) {
+        $('#waterfall').masonry({
+            itemSelector: ".item",
+            isAnimated: false,
+            isFitWidth: true
+        });
+    })(jQuery);
+  </script>
+  <div class="ad-box">
+   <div class="ad-item">
+    <div class="ad-juicy">
+     <script async="" data-cfasync="false" src="https://poweredby.jads.co/js/jads.js" type="text/javascript">
+     </script>
+     <ins data-height="90" data-width="728" id="1024551">
+     </ins>
+     <script async="" data-cfasync="false" type="text/javascript">
+      (adsbyjuicy = window.adsbyjuicy || []).push({"adzone":1024551});
+     </script>
+    </div>
+   </div>
+  </div>
+  <div class="text-center hidden-xs">
+   <ul class="pagination pagination-lg">
+    <li class="active">
+     <a href="/search/葵つかさ/1">
+      1
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/2">
+      2
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/3">
+      3
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/4">
+      4
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/5">
+      5
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/6">
+      6
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/7">
+      7
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/8">
+      8
+     </a>
+    </li>
+    <li>
+     <a href="/search/葵つかさ/2" id="next">
+      下一頁
+     </a>
+    </li>
+   </ul>
+  </div>
+  <footer class="footer hidden-xs">
+   <div class="container-fluid">
+    <p>
+     <a href="https://www.javbus.com/doc/terms">
+      Terms
+     </a>
+     /
+     <a href="https://www.javbus.com/doc/privacy">
+      Privacy
+     </a>
+     /
+     <a href="https://www.javbus.com/doc/usc">
+      2257
+     </a>
+     /
+     <a href="http://www.rtalabel.org/" rel="external nofollow" target="_blank">
+      RTA
+     </a>
+     /
+     <a href="javascript:bootstr(1);" r="">
+      廣告投放
+     </a>
+     /
+     <a href="javascript:bootstr(2);">
+      聯絡我們
+     </a>
+     <br/>
+     <a data-toggle="modal" href="#formModal" id="adscontact">
+     </a>
+     Copyright © 2013 JavBus. All Rights Reserved. All other trademarks and copyrights are the property of their respective holders. The reviews and comments expressed at or through this website are the opinions of the individual author and do not reflect the opinions or views of JavBus. JavBus is not responsible for the accuracy of any of the information supplied here.
+    </p>
+   </div>
+  </footer>
+  <div class="visible-xs-block footer-bar-placeholder">
+  </div>
+  <script language="javascript">
+   function bootstr(type){
+    	ads = "廣告投放";
+    	contact = "聯絡我們";
+    	translate = "翻譯";
+    	$("#adstype").val(type);
+    	if(type==1){
+    		$("#contactModalLab").html(ads);
+    		$("#qqskype").show();
+    		$("#transinfo").hide();
+    		$("#translanguage").hide();
+    		$("#mailcontent").show();		
+    	}else if(type==2){
+    		$("#contactModalLab").html(contact);
+    		$("#qqskype").show();
+    		$("#transinfo").hide();
+    		$("#translanguage").hide();
+    		$("#mailcontent").show();
+    	}else if(type==3){
+    		$("#contactModalLab").html(translate);
+    		$("#qqskype").hide();
+    		$("#transinfo").show();
+    		$("#translanguage").show();
+    		$("#mailcontent").hide();
+    	}
+    	$("#adscontact").trigger("click");
+		getverifycode();    	
+    };
+    function getverifycode(){
+       $('#verify').attr("src","/post/verify?"+Math.random()*10000);
+    };
+    function IsMail(mail){
+     var remail= /^([a-zA-Z0-9_-])+(\.)?([a-zA-Z0-9_-])+@([a-zA-Z0-9_-])+(.[a-zA-Z0-9_-])+/;
+     return(remail.test(mail));
+    };
+    function checkform(){
+    	var post = true; 
+      if($("#verifycode").val().length!=5){
+    	  	alert("驗證碼輸入錯誤!") 
+    		$("#verifycode").focus(); 
+    		post = false;
+    	  }
+      if($("#contact").val().length>255){
+    	  	alert("聯繫方式字數過多!") 
+    		$("#contact").focus(); 
+    		post = false;
+    	  }
+      
+      if(!IsMail($("#mail").val())){
+    	alert("請輸入正確的電郵地址!") 
+     	$("#mail").focus(); 
+        post = false;
+      }
+      
+      if($("#intention").val().length>25500){
+    	  	alert("投放意向字數過多!") 
+    		$("#intention").focus(); 
+    		post = false;
+    	  }
+    	  
+      if($("#trans").val().length>255){
+    	  	alert("Too many words in your language textbox!") 
+    		$("#intention").focus(); 
+    		post = false;
+    	  }	  
+      if(post== true){
+    	  $("#modalclose").trigger("click");
+    	  $("#postform").attr("action", "/post/contact");
+    	  $("#postform").submit();
+    	}
+      return post;
+    };
+  </script>
+  <script>
+   $("#showmag,#cellshowmag,#resultshowmag").click(function(){
+	$.cookie("existmag", "mag",{expires:365,path:'/'}); 
+	location.reload() 
+});
+
+$("#showall,#cellshowall,#resultshowall").click(function(){
+	$.cookie("existmag", "all",{expires:365,path:'/'}); 
+	location.reload() 
+});
+$("#showonline").click(function(){
+	$.cookie("existmag", "online",{expires:365,path:'/'}); 
+	location.reload() 
+});
+$(".info .mypointer").click(function(){
+	var obj = $(this);
+	var code = obj.attr('value');
+	var token = $("#token").val();
+	var e = "../ajax/addfavorite.php?code=" + encodeURIComponent(code) + "&token=" + encodeURIComponent(token) + "&floor=" + Math.floor(Math.random() * 1e3 + 1);
+    $.ajax({
+        url: e,
+        type: "POST",
+		//dataType: "json",
+		cache:false,
+        success: function (json) {
+			//obj.html(json);
+			ajaxobj=eval("("+json+")");
+			if(ajaxobj.act=='err'){
+				alert('收藏次數達上限，請稍候再試');	
+			}else{
+				obj.html(ajaxobj.act);
+				obj.attr('value',ajaxobj.code);
+				obj.attr('title',ajaxobj.title);
+				$("#token").val(ajaxobj.token);
+			}
+        }
+    });
+});
+
+$(".glyphicon-heart-empty").hover(function () {
+    $(this).removeClass('glyphicon-heart-empty');
+	$(this).addClass('glyphicon-heart');
+}, function () {
+    $(this).removeClass('glyphicon-heart');
+    $(this).addClass('glyphicon-heart-empty');
+});
+$(".glyphicon-heart").hover(function () {
+    $(this).removeClass('glyphicon-heart');
+	$(this).addClass('glyphicon-heart-empty');
+}, function () {
+    $(this).removeClass('glyphicon-heart-empty');
+    $(this).addClass('glyphicon-heart');
+});
+  </script>
+  <!-- Modal Forms -->
+  <div aria-hidden="true" aria-labelledby="formModalLabel" class="modal fade" id="formModal" role="dialog" tabindex="-1">
+   <div class="modal-dialog">
+    <div class="modal-content">
+     <div class="modal-header">
+      <button aria-label="Close" class="close" data-dismiss="modal" id="modalclose" type="button">
+       <span aria-hidden="true">
+        ×
+       </span>
+      </button>
+      <h4 class="modal-title" id="contactModalLab">
+       聯絡我們
+      </h4>
+     </div>
+     <div class="modal-body">
+      <form class="form-horizontal" enctype="multipart/form-data" id="postform" method="post" name="postform">
+       <fieldset>
+        <div class="form-group" id="qqskype">
+         <label class="col-sm-4 control-label" for="contact">
+          QQ / Skype
+         </label>
+         <div class="col-sm-6">
+          <input class="form-control" id="contact" name="contact" placeholder="" type="text"/>
+         </div>
+        </div>
+        <div class="form-group">
+         <label class="col-sm-4 control-label" for="mail">
+          Email
+         </label>
+         <div class="col-sm-6">
+          <input class="form-control" id="mail" name="mail" placeholder="" type="text"/>
+         </div>
+        </div>
+        <div class="form-group" id="translanguage">
+         <label class="col-sm-4 control-label" for="trans">
+          Your Language
+         </label>
+         <div class="col-sm-6">
+          <input class="form-control" id="trans" name="trans" placeholder="" type="text"/>
+         </div>
+        </div>
+        <div class="form-group" id="mailcontent">
+         <label class="col-sm-4 control-label" for="intention" id="inten-trans">
+          內容
+         </label>
+         <div class="col-sm-6">
+          <textarea class="form-control" id="intention" name="intention" rows="9"></textarea>
+         </div>
+        </div>
+        <div class="form-group">
+         <label class="col-sm-4 control-label" for="verify">
+          驗證碼
+         </label>
+         <div class="col-sm-6">
+          <input id="verifycode" name="verifycode" style="width:50px" type="text"/>
+          <img id="verify" onclick="getverifycode()" src="" style="cursor: pointer; vertical-align:middle;"/>
+         </div>
+        </div>
+        <input id="adstype" name="adstype" type="hidden" value="1"/>
+       </fieldset>
+      </form>
+     </div>
+     <div class="modal-footer">
+      <button button="" class="btn btn-primary" onclick="checkform()" type="button">
+       送出
+      </button>
+      <button button="" class="btn btn-default" data-dismiss="modal" type="button">
+       關閉
+      </button>
+     </div>
+    </div>
+   </div>
+  </div>
+  <!-- ////////////////////////////////////////////////// -->
+  <div class="overlay overlay-contentscale">
+   <div class="row">
+    <div class="col-xs-12 text-center ptb20">
+     <div class="input-group col-xs-offset-2 col-xs-8">
+      <input class="form-control" id="search-input-mobile" placeholder="搜尋 識別碼, 影片, 演員" type="text"/>
+      <span class="input-group-btn">
+       <button class="btn btn-default" onclick="searchs('search-input-mobile')" type="submit">
+        搜尋
+       </button>
+      </span>
+     </div>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/">
+      有碼
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/uncensored">
+      無碼
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/genre">
+      有碼類別
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/uncensored/genre">
+      無碼類別
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/actresses">
+      有碼女優
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/uncensored/actresses">
+      無碼女優
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.org/">
+      歐美
+     </a>
+    </div>
+    <div class="col-xs-6 text-center">
+     <a href="https://www.javbus.com/genre/hd">
+      高清
+     </a>
+    </div>
+    <div class="col-xs-12 text-center overlay-close">
+     <i class="glyphicon glyphicon-remove">
+     </i>
+    </div>
+   </div>
+  </div>
+ </body>
+</html>

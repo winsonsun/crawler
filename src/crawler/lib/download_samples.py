@@ -120,17 +120,19 @@ async def process_detail_file_async(path: Path, timeout: int = 20, download_cove
         return results
 
     tasks = []
+    semaphore = asyncio.Semaphore(5)
     
     async def _dl_task(url, dest_path):
         if skip_existing and dest_path.exists() and dest_path.stat().st_size > 0:
             results['skipped'].append(str(dest_path))
             return
-        try:
-            ok = await download_url_async(session, url, dest_path, timeout=timeout)
-            if ok: results['downloaded'].append(str(dest_path))
-            else: results['failed'].append(url)
-        except Exception:
-            results['failed'].append(url)
+        async with semaphore:
+            try:
+                ok = await download_url_async(session, url, dest_path, timeout=timeout)
+                if ok: results['downloaded'].append(str(dest_path))
+                else: results['failed'].append(url)
+            except Exception:
+                results['failed'].append(url)
 
     # Use provided session or create a temporary one
     close_session = False

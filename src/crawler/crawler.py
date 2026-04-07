@@ -3,10 +3,16 @@
 import time 
 import asyncio
 import aiohttp
+try:
+    from aiohttp_client_cache import CachedSession, SQLiteBackend
+except ImportError:
+    CachedSession = SQLiteBackend = None
 import requests
 import base64
 import sys
 import os
+import datetime
+import hashlib
 from crawl4ai import *
 from crawl4ai.extraction_strategy import LLMExtractionStrategy
 try:
@@ -138,6 +144,7 @@ class Crawler:
     """Encapsulates parsing and web crawling logic."""
 
     def __init__(self, config: CrawlerConfig):
+        self._stash_cache = {}
         # Load .env variables
         env_path = Path(".env")
         if env_path.exists():
@@ -177,6 +184,19 @@ class Crawler:
             except Exception as e:
                 print(f"Warning: Could not load alias map: {e}")
 
+    def _inject_meta(self, data: dict) -> dict:
+        import json
+        data_copy = {k: v for k, v in data.items() if k != "_meta"}
+        content_str = json.dumps(data_copy, sort_keys=True, ensure_ascii=False)
+        content_hash = hashlib.md5(content_str.encode('utf-8')).hexdigest()
+        
+        if "_meta" not in data:
+            data["_meta"] = {}
+            
+        data["_meta"]["scraped_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        data["_meta"]["hash"] = content_hash
+        return data
+
     def _resolve_actor_name(self, name: str) -> Tuple[str, str]:
         """Resolves an actor name using the global alias map. Returns (primary_name, credited_as_or_None)."""
         primary = self.alias_map.get(name)
@@ -190,6 +210,18 @@ class Crawler:
             "User-Agent": self.dynamic_user_agent, 
             "Cookie": self.dynamic_cookie or "existmag=all; age=verified"
         }
+
+    def _get_client_session(self, headers: dict):
+        if CachedSession and self.config.ain_list_file:
+            cache_name = os.path.join(os.environ.get("CRAW_DATA", "./data"), "http_cache")
+            cache = SQLiteBackend(
+                cache_name=cache_name,
+                expire_after=86400, # 24 hours
+                allowed_methods=('GET',),
+                allowed_codes=(200, 301, 302)
+            )
+            return CachedSession(cache=cache, headers=headers)
+        return aiohttp.ClientSession(headers=headers)
 
     async def _save_search_result(self, scene_name, data):
         self.search_dir.mkdir(exist_ok=True)
@@ -297,7 +329,7 @@ class Crawler:
         headers["Referer"] = page_url
         headers["X-Requested-With"] = "XMLHttpRequest"
         ajax_url = f"https://www.javbus.com/ajax/uncledatoolsbyajax.php?gid={gid}&lang=zh&img={img}&uc={uc}"
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with self._get_client_session(headers=headers) as session:
             try:
                 async with session.get(ajax_url, timeout=10) as resp:
                     if resp.status == 200:
@@ -439,6 +471,8 @@ class Crawler:
             media_dir.mkdir(parents=True, exist_ok=True)
             detail_file = media_dir / f"{detail['id']}.json"
             
+            detail = self._inject_meta(detail)
+            
             with open(detail_file, 'w', encoding='utf-8') as fh:
                 json.dump(detail, fh, ensure_ascii=False, indent=2)
             print(f"Wrote {detail_file}")
@@ -512,7 +546,7 @@ class Crawler:
         from bs4 import BeautifulSoup
         
         # Fast path: Try lightweight aiohttp first
-        async with aiohttp.ClientSession(headers=self._get_http_headers()) as session:
+        async with self._get_client_session(headers=self._get_http_headers()) as session:
             try:
                 async with session.get(url, timeout=10, allow_redirects=True) as resp:
                     if resp.status == 200:
@@ -788,6 +822,8 @@ class Crawler:
             final_info["aliases"] = [actor_name]
 
         final_info.update({k: v for k, v in info.items() if k not in ["name", "url", "avatar", "aliases"]})
+        
+        final_info = self._inject_meta(final_info)
 
         try:
             with open(actor_file, 'w', encoding='utf-8') as f:
@@ -993,9 +1029,17 @@ class Crawler:
             print(f"No performers found in active scan file: {self.config.active_scan_file}")
             return
             
-        for actor_name, star_url in active_scan_data.items():
+        # If specific scenes were provided, treat them as group names to scan
+        target_groups = self.config.scenes if self.config.scenes else active_scan_data.keys()
+        
+        for actor_name in target_groups:
+            star_url = active_scan_data.get(actor_name)
             if not star_url:
+                if self.config.scenes:
+                    print(f"Group '{actor_name}' not found in active scan file. Skipping.")
                 continue
+                
+            print(f"\n>>> Scanning collection for '{actor_name}': {star_url}")
             await self._extract_and_save_actor_info(star_url, actor_name, web_crawler)
             await self._scan_star_pages(star_url, actor_name, web_crawler)
 
@@ -1015,7 +1059,7 @@ class Crawler:
         headers['Referer'] = SITES_CONFIG.get(self.config.site, {}).get("home_url", "https://www.javbus.com") + "/"
         
         tasks = []
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with self._get_client_session(headers=headers) as session:
             for item in media_list:
                 scene_id = item.get("id")
                 if not scene_id: continue
@@ -1094,6 +1138,10 @@ class Crawler:
             return None
 
     def _get_or_create_performer(self, name: str):
+        cache_key = f"performer_{name}"
+        if cache_key in self._stash_cache:
+            return self._stash_cache[cache_key]
+
         query = """
         query FindPerformers($filter: FindFilterType, $performer_filter: PerformerFilterType) {
           findPerformers(filter: $filter, performer_filter: $performer_filter) {
@@ -1104,7 +1152,9 @@ class Crawler:
         variables = {"performer_filter": {"name": {"value": name, "modifier": "EQUALS"}}}
         data = self._stash_request(query, variables)
         if data and data.get("findPerformers") and data["findPerformers"].get("performers"):
-            return data["findPerformers"]["performers"][0]["id"]
+            pid = data["findPerformers"]["performers"][0]["id"]
+            self._stash_cache[cache_key] = pid
+            return pid
         
         print(f"Performer '{name}' not found. Creating...")
         mutation = """
@@ -1113,9 +1163,16 @@ class Crawler:
         }
         """
         data = self._stash_request(mutation, {"input": {"name": name}})
-        return data["performerCreate"]["id"] if data and data.get("performerCreate") else None
+        pid = data["performerCreate"]["id"] if data and data.get("performerCreate") else None
+        if pid:
+            self._stash_cache[cache_key] = pid
+        return pid
 
     def _get_or_create_tag(self, name: str):
+        cache_key = f"tag_{name}"
+        if cache_key in self._stash_cache:
+            return self._stash_cache[cache_key]
+
         query = """
         query FindTags($filter: FindFilterType, $tag_filter: TagFilterType) {
           findTags(filter: $filter, tag_filter: $tag_filter) {
@@ -1126,7 +1183,9 @@ class Crawler:
         variables = {"tag_filter": {"name": {"value": name, "modifier": "EQUALS"}}}
         data = self._stash_request(query, variables)
         if data and data.get("findTags") and data["findTags"].get("tags"):
-            return data["findTags"]["tags"][0]["id"]
+            tid = data["findTags"]["tags"][0]["id"]
+            self._stash_cache[cache_key] = tid
+            return tid
         
         print(f"Tag '{name}' not found. Creating...")
         mutation = """
@@ -1135,9 +1194,16 @@ class Crawler:
         }
         """
         data = self._stash_request(mutation, {"input": {"name": name}})
-        return data["tagCreate"]["id"] if data and data.get("tagCreate") else None
+        tid = data["tagCreate"]["id"] if data and data.get("tagCreate") else None
+        if tid:
+            self._stash_cache[cache_key] = tid
+        return tid
 
     def _get_or_create_studio(self, name: str):
+        cache_key = f"studio_{name}"
+        if cache_key in self._stash_cache:
+            return self._stash_cache[cache_key]
+
         query = """
         query FindStudios($filter: FindFilterType, $studio_filter: StudioFilterType) {
           findStudios(filter: $filter, studio_filter: $studio_filter) {
@@ -1148,7 +1214,9 @@ class Crawler:
         variables = {"studio_filter": {"name": {"value": name, "modifier": "EQUALS"}}}
         data = self._stash_request(query, variables)
         if data and data.get("findStudios") and data["findStudios"].get("studios"):
-            return data["findStudios"]["studios"][0]["id"]
+            sid = data["findStudios"]["studios"][0]["id"]
+            self._stash_cache[cache_key] = sid
+            return sid
         
         print(f"Studio '{name}' not found. Creating...")
         mutation = """
@@ -1157,7 +1225,10 @@ class Crawler:
         }
         """
         data = self._stash_request(mutation, {"input": {"name": name}})
-        return data["studioCreate"]["id"] if data and data.get("studioCreate") else None
+        sid = data["studioCreate"]["id"] if data and data.get("studioCreate") else None
+        if sid:
+            self._stash_cache[cache_key] = sid
+        return sid
 
     def _find_scene_by_volume(self, volume_id: str):
         query = """
@@ -1202,29 +1273,40 @@ class Crawler:
         print(f"\n--- Syncing {group_name} to Stash (Type: {self.config.sync_type}) ---")
         
         media_list = []
-        # Attempt to load from legacy media_list format just in case
+        # Attempt to load from legacy media_list format
         media_list_path = self.actress_dir / group_name / "media_list.json"
         
         if media_list_path.exists():
-            with open(media_list_path, 'r', encoding='utf-8') as f:
-                media_list = json.load(f)
+            try:
+                with open(media_list_path, 'r', encoding='utf-8') as f:
+                    media_list = json.load(f)
+            except Exception as e:
+                print(f"Error loading {media_list_path}: {e}")
         
-        if not media_list and self.config.ain_list_file and Path(self.config.ain_list_file).exists():
+        # Whitelist Filtering Logic: Use ain_list to filter or supplement the media_list
+        if self.config.ain_list_file and Path(self.config.ain_list_file).exists():
             try:
                 with open(self.config.ain_list_file, 'r', encoding='utf-8') as f:
-                    group_data = json.load(f)
-                    if isinstance(group_data, dict):
-                        if group_name in group_data:
-                            media_list = [{"id": v_id} for v_id in group_data[group_name]]
-                            print(f"Loaded {len(media_list)} scenes from {self.config.ain_list_file} for {group_name}.")
+                    ain_data = json.load(f)
+                    if isinstance(ain_data, dict) and group_name in ain_data:
+                        local_ids = set(ain_data[group_name])
+                        if media_list:
+                            # Filter media_list to only include items on disk
+                            original_count = len(media_list)
+                            media_list = [m for m in media_list if m.get("id") in local_ids]
+                            print(f"Filtered {original_count} scenes to {len(media_list)} local items using {self.config.ain_list_file}.")
+                        else:
+                            # Fallback to ain_list if no media_list.json exists
+                            media_list = [{"id": v_id} for v_id in local_ids]
+                            print(f"Loaded {len(media_list)} scenes directly from {self.config.ain_list_file}.")
                     else:
-                        print(f"ALERT: {self.config.ain_list_file} is not a JSON dictionary. Only dictionary format is supported.")
+                        print(f"Group '{group_name}' not found in {self.config.ain_list_file}. No filtering applied.")
             except Exception as e:
-                print(f"Error loading {self.config.ain_list_file}: {e}")
+                print(f"Error processing {self.config.ain_list_file}: {e}")
 
         if not media_list:
             ain_msg = f" or {self.config.ain_list_file}" if self.config.ain_list_file else ""
-            print(f"Media list for {group_name} not found in media_list.json{ain_msg}.")
+            print(f"No scenes to sync for {group_name} (checked media_list.json{ain_msg}).")
             return
             
         p_id = None
@@ -1248,6 +1330,23 @@ class Crawler:
             v_id = item.get("id")
             if not v_id: continue
             
+            detail_file = self.media_dir / v_id / f"{v_id}.json"
+            detail_data = {}
+            if detail_file.exists():
+                try:
+                    with open(detail_file, 'r', encoding='utf-8') as df:
+                        detail_data = json.load(df)
+                except Exception:
+                    pass
+
+            meta = detail_data.get("_meta", {})
+            current_hash = meta.get("hash")
+            last_synced_hash = meta.get("last_synced_hash")
+
+            if current_hash and current_hash == last_synced_hash:
+                print(f"  Scene {v_id} unchanged since last sync. Skipping.")
+                continue
+            
             scene = self._find_scene_by_volume(v_id)
             if not scene:
                 print(f"  Scene for {v_id} not found in Stash.")
@@ -1268,6 +1367,15 @@ class Crawler:
                 cover_path=cover_file
             ):
                 print(f"  Successfully updated scene {v_id} in Stash.")
+                
+                # Update last_synced_hash on success
+                if current_hash and detail_file.exists():
+                    detail_data["_meta"]["last_synced_hash"] = current_hash
+                    try:
+                        with open(detail_file, 'w', encoding='utf-8') as df:
+                            json.dump(detail_data, df, ensure_ascii=False, indent=2)
+                    except Exception as e:
+                        print(f"  Failed to update last_synced_hash for {v_id}: {e}")
 
     async def rebuild_list(self, category: str):
         data_dir = os.environ.get("CRAW_DATA", CRAW_DATA)
@@ -1377,7 +1485,7 @@ class Crawler:
         from bs4 import BeautifulSoup
         
         html = ""
-        async with aiohttp.ClientSession(headers=self._get_http_headers()) as session:
+        async with self._get_client_session(headers=self._get_http_headers()) as session:
             try:
                 async with session.get(url, timeout=15) as resp:
                     if resp.status == 200:
@@ -1485,6 +1593,8 @@ class Crawler:
         detail_dir.mkdir(parents=True, exist_ok=True)
         detail_file = detail_dir / f"{detail['id']}.json"
 
+        detail = self._inject_meta(detail)
+
         with open(detail_file, "w", encoding="utf-8") as f:
             json.dump(detail, f, ensure_ascii=False, indent=2)
         print(f"Wrote {detail_file}")
@@ -1505,10 +1615,17 @@ class Crawler:
     async def process_scenes(self, run_search: bool, run_parse: bool, run_download: bool):
         if self.config.native_fetch:
             print("\n>>> Bypassing Crawl4AI. Using lightweight native HTTP/BS4 pipeline...")
-            tasks = []
-            for scene_name in self.config.scenes:
-                url = build_url(self.config.site, scene_name)
-                tasks.append(self._process_native(scene_name, url))
+            semaphore = asyncio.Semaphore(3)
+            
+            async def process_with_semaphore(scene_name):
+                if not self.config.force and self._is_complete(scene_name):
+                    print(f"Skipping '{scene_name}' as it appears complete. Use --force to re-process.")
+                    return
+                async with semaphore:
+                    url = build_url(self.config.site, scene_name)
+                    await self._process_native(scene_name, url)
+                    
+            tasks = [process_with_semaphore(scene_name) for scene_name in self.config.scenes]
             if tasks:
                 await asyncio.gather(*tasks)
             return
