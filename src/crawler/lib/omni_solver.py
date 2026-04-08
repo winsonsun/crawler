@@ -106,15 +106,18 @@ class GeminiOmniSolver(BaseOmniSolver):
         image_bytes = base64.b64decode(screenshot_base64)
         
         prompt = (
-            "You are an expert at solving complex anti-bot mechanisms, CAPTCHAs, and navigating web interfaces. "
+            "You are an expert at solving complex anti-bot mechanisms, knowledge-based CAPTCHAs (like the China Driver License exam questions), and navigating web interfaces. "
+            "Your persona is 'The Logical Auditor' who can solve any visual or text-based challenge. "
             "Examine the provided screenshot and HTML context of a web page. "
             "Your task is to determine the best next step to take: "
-            "1. If it is an automatic verification (e.g., Cloudflare 'Verifying you are human' with a spinner and NO checkbox/button), return action='wait'. "
-            "2. If it is a multiple choice question or a button to click (like an age gate or Cloudflare checkbox), return action='click' and provide the 'target_text' and 'target_selector'. "
-            "3. If you see a prominent search input field and need to perform a search, return action='search' and provide 'search_input_selector' and 'search_button_selector' (if a button is visible). "
-            "4. If the page appears to have already reached its target or no anti-bot is visible (i.e., you see the real content like movie listings), return action='solved'. "
-            "5. Otherwise, if you are unsure, return action='failed'. "
-            "Include your brief reasoning. Return the solution matching the provided JSON schema."
+            "1. If it is an automatic verification (e.g., Cloudflare 'Verifying you are human' or Turnstile), return action='wait'. "
+            "2. If it is a multiple choice question (e.g. 'Which of these is a car?'), a checkbox (e.g. 'I am 18'), or a button to click (e.g. 'Confirm', 'Enter'), return action='click' and provide the 'target_text' and 'target_selector'. "
+            "   Choose the LOGICALLY CORRECT answer if a question is asked. For checkboxes, prioritize checking them before clicking the main button. "
+            "3. If you see a prominent search input field on a landing page, return action='search' and provide 'search_input_selector' and 'search_button_selector'. "
+            "4. If the page is already at its target (e.g. shows movie lists, movie details, or is clearly the home page), return action='solved'. "
+            "5. Otherwise, return action='failed'. "
+            "Include your reasoning, specifically explaining why you chose a particular target if it was a question. "
+            "Return the solution matching the provided JSON schema."
         )
 
         response = self.client.models.generate_content(

@@ -122,11 +122,23 @@ def parse_video_block(block_text: str) -> dict:
             except Exception:
                 file_count = None
 
+        # FIDELITY UPDATE: try to find update date like '2013-06-13'
+        date_str = None
+        mdate = re.search(r'([0-9]{4}-[0-9]{2}-[0-9]{2})', display)
+        if mdate:
+            date_str = mdate.group(1)
+        else:
+            context = block_text[m.end():m.end()+100]
+            mdate_context = re.search(r'([0-9]{4}-[0-9]{2}-[0-9]{2})', context)
+            if mdate_context:
+                date_str = mdate_context.group(1)
+
         magnet_entries.append({
             'uri': uri.rstrip('),.;'),
             'name': name,
             'total_size': total_size,
             'file_count': file_count,
+            'date': date_str
         })
 
     out['magnet_entries'] = magnet_entries

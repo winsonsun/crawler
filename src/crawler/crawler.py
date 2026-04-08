@@ -3,16 +3,25 @@
 import time 
 import asyncio
 import aiohttp
+import requests
 try:
     from aiohttp_client_cache import CachedSession, SQLiteBackend
 except ImportError:
     CachedSession = SQLiteBackend = None
-import requests
-import base64
-import sys
+from typing import Callable, Dict, Tuple, List, Any, Optional
+import re
+import pprint
+import json
+import importlib
+import glob
+import random
 import os
+import sys
 import datetime
 import hashlib
+import base64
+from pathlib import Path
+from urllib.parse import quote_plus
 from crawl4ai import *
 from crawl4ai.extraction_strategy import LLMExtractionStrategy
 try:
@@ -108,6 +117,8 @@ class CrawlerConfig:
     min_delay: float = 10.0
     max_delay: float = 90.0
     user_data_dir: str = os.path.join(CRAW_CONF, "browser_profile")
+    cdp_url: str = None
+    use_local_cookies: bool = False
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"
     dry_run: bool = False
     verbose: bool = False
@@ -182,6 +193,20 @@ class Crawler:
             self._rotate_user_agent()
             
         self.search_lock = asyncio.Lock()
+# Load Persistent Cookies (Survival Memory)
+        self.cookie_path = os.path.join(CRAW_CONF, "cookies.json")
+        if os.path.exists(self.cookie_path):
+            try:
+                with open(self.cookie_path, 'r') as f:
+                    saved_cookies = json.load(f)
+                    persistent_cookie = saved_cookies.get(self.config.site, "")
+                    if persistent_cookie:
+                        self.dynamic_cookie = persistent_cookie
+                        print(f"Loaded persistent cookies for {self.config.site}")
+            except Exception: pass
+
+        if self.config.use_local_cookies:
+            self._load_local_browser_cookies()
         
         # Load Global Aliases
         self.alias_map = {}
@@ -192,6 +217,35 @@ class Crawler:
                     self.alias_map = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load alias map: {e}")
+
+    def _load_local_browser_cookies(self):
+        try:
+            import browser_cookie3
+            domain = self.cookie_domain or self.config.site
+            # Load cookies from the default local browser
+            cj = browser_cookie3.load(domain_name=domain)
+            cookie_parts = []
+            for c in cj:
+                cookie_parts.append(f"{c.name}={c.value}")
+            
+            if cookie_parts:
+                self.dynamic_cookie = "; ".join(cookie_parts)
+                print(f"Successfully extracted local browser cookies for {domain}")
+                
+                # Persist it
+                try:
+                    all_cookies = {}
+                    if os.path.exists(self.cookie_path):
+                        with open(self.cookie_path, 'r') as f: all_cookies = json.load(f)
+                    all_cookies[self.config.site] = self.dynamic_cookie
+                    with open(self.cookie_path, 'w') as f: json.dump(all_cookies, f)
+                except Exception: pass
+                
+                return True
+        except Exception as e:
+            if self.config.verbose:
+                print(f"Could not extract local browser cookies: {e}")
+        return False
 
     def _rotate_user_agent(self):
         """Randomly selects a new User-Agent from a list of modern browser strings."""
@@ -233,6 +287,7 @@ class Crawler:
             "Cookie": self.dynamic_cookie or "existmag=all; age=verified"
         }
 
+
     def _get_client_session(self, headers: dict):
         if CachedSession and self.config.ain_list_file:
             cache_name = os.path.join(os.environ.get("CRAW_DATA", "./data"), "http_cache")
@@ -244,6 +299,135 @@ class Crawler:
             )
             return CachedSession(cache=cache, headers=headers)
         return aiohttp.ClientSession(headers=headers)
+
+    async def _fetch_soup_safe(self, url: str, web_crawler: AsyncWebCrawler):
+        from bs4 import BeautifulSoup
+        from .lib.bypass import get_age_gate_bypass_js
+        from .lib.omni_solver import GeminiOmniSolver, SolverAction
+        
+        # 0. PROACTIVE BYPASS: Inject critical JavBus cookies
+        if "javbus.com" in url:
+            current_headers = self._get_http_headers()
+            cookies = current_headers.get('Cookie', '')
+            if "existmag=all" not in cookies:
+                new_cookies = (cookies + "; " if cookies else "") + "existmag=all"
+                self.dynamic_cookie = new_cookies
+                print(f"[_fetch_soup_safe] Proactively injected existmag=all cookie")
+
+        # 1. Fast path: Try lightweight aiohttp first
+        async with self._get_client_session(headers=self._get_http_headers()) as session:
+            try:
+                async with session.get(url, timeout=10, allow_redirects=True) as resp:
+                    if resp.status == 200:
+                        html = await resp.text()
+                        if not any(x in html for x in ["你是否已經成年", "確認", "18歳以上", "Just a moment...", "Challenge", "reCAPTCHA"]):
+                            soup = BeautifulSoup(html, 'lxml')
+                            if any(soup.select(sel) for sel in ['.movie-box', '.bigImage', '.photo-info', '.item']):
+                                return soup
+            except Exception: pass
+
+        # 2. Medium path: Try crawl4ai with static JS bypass
+        js_bypass = get_age_gate_bypass_js()
+        
+        print(f"[_fetch_soup_safe] Static bypass attempt for {url}")
+        result = await web_crawler.arun(
+            url=url, 
+            config=self.crawl_config, 
+            headers=self._get_http_headers(), 
+            js_code=js_bypass,
+            wait_for=".movie-box, .bigImage, .photo-info, .item, #main, .movie-list, .container"
+        )
+        
+        # Update cookies
+        self._update_cookies_from_result(result)
+        
+        html = result.html or ""
+        if any(x in html for x in ["movie-box", "bigImage", "photo-info", "item", "movie-list"]):
+             if "Just a moment..." not in html and "reCAPTCHA" not in html:
+                return BeautifulSoup(html, 'lxml')
+
+        # 3. Slow path: OmniSolver (Autonomous Bypass)
+        print(f"[_fetch_soup_safe] Static bypass failed or challenge detected. Activating OmniSolver...")
+        solver = GeminiOmniSolver()
+        
+        for step in range(5):
+            b64_img = getattr(result, 'screenshot', None) or getattr(result, 'base64_screenshot', None)
+            if not b64_img:
+                print(f"[_fetch_soup_safe] No screenshot available for OmniSolver at step {step}")
+                break
+                
+            solution = solver.solve(b64_img, result.html or "")
+            print(f"[_fetch_soup_safe] OmniSolver Step {step+1}: Action={solution.action}, Reasoning={solution.reasoning}")
+            
+            if solution.action == SolverAction.SOLVED:
+                return BeautifulSoup(result.html or "", 'lxml')
+            
+            if solution.action == SolverAction.WAIT:
+                await asyncio.sleep(5)
+                result = await web_crawler.arun(url=result.url, config=self.crawl_config, headers=self._get_http_headers())
+            
+            elif solution.action == SolverAction.CLICK:
+                target = solution.target_selector or solution.target_text
+                omni_js = f"""
+                return (async () => {{
+                    const selector = "{solution.target_selector or ""}";
+                    const text = "{solution.target_text or ""}";
+                    let btn;
+                    if (selector) btn = document.querySelector(selector);
+                    if (!btn && text) {{
+                        const elements = Array.from(document.querySelectorAll('button, a, span, div, img, input[type="button"], input[type="submit"]'));
+                        btn = elements.find(el => (el.innerText && el.innerText.includes(text)) || (el.alt && el.alt.includes(text)) || (el.value && el.value.includes(text)));
+                    }}
+                    if (btn) {{
+                        // Handle stateful checkbox if needed
+                        const ageCheck = document.querySelector('input[type="checkbox"]');
+                        if (ageCheck && !ageCheck.checked) {{
+                            ageCheck.click();
+                            await new Promise(r => setTimeout(r, 1000)); // Delay for state
+                        }}
+                        btn.click();
+                    }}
+                    await new Promise(r => setTimeout(r, 3000));
+                    return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
+                }})();
+                """
+                result = await web_crawler.arun(url=result.url, config=self.crawl_config, headers=self._get_http_headers(), js_code=omni_js)
+                self._update_cookies_from_result(result)
+            
+            elif solution.action == SolverAction.SEARCH:
+                # If we are on home page and it's asking to search, it's effectively "solved" for the home page crawl
+                return BeautifulSoup(result.html or "", 'lxml')
+            
+            else:
+                print(f"[_fetch_soup_safe] OmniSolver failed or returned unknown action: {solution.action}")
+                break
+
+        return BeautifulSoup(result.html or "", 'lxml')
+
+    def _update_cookies_from_result(self, result):
+        """Updates dynamic cookies and persists them if they contain clearance tokens."""
+        js_out = getattr(result, 'js_execution_result', None) or {}
+        res_data = js_out if isinstance(js_out, dict) and 'cookie' in js_out else {}
+        if not res_data and isinstance(js_out.get('results'), list) and js_out['results']:
+            res_data = js_out['results'][0]
+            
+        if res_data:
+            self.dynamic_cookie = res_data.get('cookie', self.dynamic_cookie)
+            self.dynamic_user_agent = res_data.get('userAgent', self.dynamic_user_agent)
+            
+            # Persist if it looks like a clearance cookie
+            if any(x in self.dynamic_cookie for x in ["existmag=all", "age=verified", "cf_clearance"]):
+                try:
+                    import json
+                    all_cookies = {}
+                    if os.path.exists(self.cookie_path):
+                        with open(self.cookie_path, 'r') as f: all_cookies = json.load(f)
+                    all_cookies[self.config.site] = self.dynamic_cookie
+                    with open(self.cookie_path, 'w') as f: json.dump(all_cookies, f)
+                    print(f"[_update_cookies_from_result] Persisted clearance cookie for {self.config.site}")
+                except Exception: pass
+
+
 
     async def _save_search_result(self, scene_name, data):
         self.search_dir.mkdir(exist_ok=True)
@@ -312,8 +496,10 @@ class Crawler:
             print(f"Discovery Step {current_step}: Action={solution.action}, Reasoning={solution.reasoning}")
             
             if solution.action == SolverAction.CLICK:
+                target = solution.target_selector or solution.target_text
+                print(f"OmniSolver clicking: {target}")
                 js_click = f"""
-                (() => {{
+                return (async () => {{
                     const selector = "{solution.target_selector or ""}";
                     const text = "{solution.target_text or ""}";
                     let btn;
@@ -322,90 +508,92 @@ class Crawler:
                         const elements = Array.from(document.querySelectorAll('button, a, span, div, img, input[type="button"], input[type="submit"]'));
                         btn = elements.find(el => (el.innerText && el.innerText.includes(text)) || (el.alt && el.alt.includes(text)) || (el.value && el.value.includes(text)));
                     }}
-                    if (btn) btn.click();
+                    if (btn) {{
+                        // Handle checkbox if it's a multiple step thing
+                        const ageCheck = document.querySelector('input[type="checkbox"]');
+                        if (ageCheck && !ageCheck.checked) ageCheck.click();
+                        
+                        btn.click();
+                    }}
+                    await new Promise(r => setTimeout(r, 2000));
+                    return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
                 }})();
                 """
                 result = await web_crawler.arun(url=result.url, config=self.crawl_config, js_code=js_click)
-                await asyncio.sleep(2)
                 
-            elif solution.action == SolverAction.SEARCH:
-                # Perform a test search to discover the URL pattern
-                test_query = "ABC-123"
-                search_js = f"""
-                (async () => {{
-                    const input = document.querySelector("{solution.search_input_selector}");
-                    if (input) {{
-                        input.value = "{test_query}";
-                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                        const btnSelector = "{solution.search_button_selector or ""}";
-                        let btn = btnSelector ? document.querySelector(btnSelector) : null;
-                        if (!btn) btn = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
-                        if (btn) btn.click();
-                        else input.dispatchEvent(new KeyboardEvent('keydown', {{'key': 'Enter'}}));
-                    }}
-                }})();
-                """
-                result = await web_crawler.arun(url=result.url, config=self.crawl_config, js_code=search_js)
-                await asyncio.sleep(3)
+                # Update dynamic cookies/UA from discovery action
+                js_out = getattr(result, 'js_execution_result', None) or {}
+                res_data = js_out if isinstance(js_out, dict) and 'cookie' in js_out else {}
+                if not res_data and isinstance(js_out.get('results'), list) and js_out['results']:
+                    res_data = js_out['results'][0]
+                if res_data:
+                    self.dynamic_cookie = res_data.get('cookie', self.dynamic_cookie)
+                    self.dynamic_user_agent = res_data.get('userAgent', self.dynamic_user_agent)
+                    print(f"[_fetch_soup_safe] Updated dynamic cookies: {self.dynamic_cookie[:50]}...")
                 
-                if test_query in result.url:
-                    pattern = result.url.replace(test_query, "{scene_name}")
-                    print(f"Self-healing: Discovered new pattern: {pattern}")
-                    await self.update_sites_config(site_key, pattern)
-                    return pattern
-                return None
-            elif solution.action == SolverAction.SOLVED:
-                break
-            else:
-                break
-        return None
+                # Persist if it looks like a clearance cookie
+                if "existmag=all" in self.dynamic_cookie or "age=verified" in self.dynamic_cookie:
+                    try:
+                        all_cookies = {}
+                        if os.path.exists(self.cookie_path):
+                            with open(self.cookie_path, 'r') as f: all_cookies = json.load(f)
+                        all_cookies[self.config.site] = self.dynamic_cookie
+                        with open(self.cookie_path, 'w') as f: json.dump(all_cookies, f)
+                        print(f"Persisted clearance cookie for {self.config.site}")
+                    except Exception: pass
 
-    def parse_line(self, line):
-        if self.parser:
-            try:
-                m, data = self.parser(line)
-                if m:
-                    return m, data
-            except Exception:
-                pass
-        
-        from .sites.javdb.parser import parse_line_generic
-        return parse_line_generic(line)
+        # Slow path: Fallback to crawl4ai for age-gate and Cloudflare bypass
+        from .lib.bypass import get_age_gate_bypass_js
+        js_bypass = get_age_gate_bypass_js()
 
-    def _is_complete(self, scene_name: str) -> bool:
-        """Check if the output directory for a scene appears to be complete."""
-        from .lib.download_samples import is_scene_complete
-        
-        detail_file = self.media_dir / scene_name / f"{scene_name}.json"
-        
-        if not self.config.download_image:
-            return detail_file.is_file()
+        for attempt in range(3):
+            print(f"[_fetch_soup_safe] Attempt {attempt+1} for {url}")
+            result = await web_crawler.arun(
+                url=url, 
+                config=self.crawl_config, 
+                headers=self._get_http_headers(), 
+                js_code=js_bypass,
+                wait_for=".movie-box, .bigImage, .photo-info, .item, #main, .movie-list"
+            )
             
-        return is_scene_complete(detail_file, media_dir=str(self.media_dir))
+            # Update cookies
+            js_out = getattr(result, 'js_execution_result', None) or {}
+            results_arr = js_out.get('results', [])
+            if results_arr and isinstance(results_arr[0], dict):
+                res = results_arr[0]
+                self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
+                self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
+                    
+            html = result.html or ""
+            if "Just a moment..." not in html and any(x in html for x in ["movie-box", "bigImage", "photo-info", "item", "movie-list"]):
+                return BeautifulSoup(html, 'lxml')
+            
+            print(f"[_fetch_soup_safe] Cloudflare or missing content detected, retrying in 5s...")
+            await asyncio.sleep(5)
+
+        return BeautifulSoup(result.html or "", 'lxml')
+
+
+
 
     async def run_search(self, scene_name: str, web_crawler: AsyncWebCrawler):
-        headers = self._get_http_headers()
-        url_to_fetch = build_url(self.config.site, scene_name)
+        from .lib.bypass import get_age_gate_bypass_js
+        js_bypass = get_age_gate_bypass_js()
         
-        js_bypass = """
-        return (() => {
-            const ageCheck = document.querySelector('input[type="checkbox"]');
-            if (ageCheck) ageCheck.click();
-            
-            const buttons = Array.from(document.querySelectorAll('button, a'));
-            const submitBtn = buttons.find(b => b.innerText.includes('成年') || b.innerText.includes('18歳以上') || b.innerText.includes('確認'));
-            if (submitBtn) submitBtn.click();
-            
-            return {
-                cookie: document.cookie,
-                userAgent: navigator.userAgent
-            };
-        })();
-        """
+        url_to_fetch = build_url(self.config.site, scene_name)
+        headers = self._get_http_headers()
         
         result1 = await web_crawler.arun(url=url_to_fetch, config=self.crawl_config, headers=headers, js_code=js_bypass)
         
-        # Check if we landed directly on a detail page
+        # Update dynamic cookies/UA
+        js_out = getattr(result1, 'js_execution_result', None) or {}
+        res_data = js_out if isinstance(js_out, dict) and 'cookie' in js_out else {}
+        if not res_data and isinstance(js_out.get('results'), list) and js_out['results']:
+            res_data = js_out['results'][0]
+        if res_data:
+            self.dynamic_cookie = res_data.get('cookie', self.dynamic_cookie)
+            self.dynamic_user_agent = res_data.get('userAgent', self.dynamic_user_agent)
+
         current_url = result1.url.rstrip("/")
         if self.config.site == "javbus" and current_url.split("/")[-1].upper() == scene_name.upper():
             res = {"id": scene_name, "page_url": result1.url}
@@ -423,494 +611,220 @@ class Crawler:
             try:
                 from .lib.omni_solver import GeminiOmniSolver, SolverAction
                 solver = GeminiOmniSolver()
-                
-                # Tier 1: Try HTML-only first
                 solution = solver.solve_from_html(result1.html or "")
                 if solution.action == SolverAction.FAILED:
-                    # Tier 2: Fallback to Vision
-                    print("Tiered Reasoning: HTML failed, using Vision...")
                     solution = solver.solve(b64_img, result1.html or "")
-                else:
-                    print(f"Tiered Reasoning: Solution found via HTML: {solution.action}")
 
                 if solution.action == SolverAction.CLICK and (solution.target_text or solution.target_selector):
-                    target = solution.target_selector or solution.target_text
-                    print(f"OmniSolver clicking: {target}")
                     omni_js = f"""
-                    return (() => {{
+                    return (async () => {{
                         const selector = "{solution.target_selector or ""}";
                         const text = "{solution.target_text or ""}";
                         let btn;
                         if (selector) btn = document.querySelector(selector);
                         if (!btn && text) {{
-                            const elements = Array.from(document.querySelectorAll('button, a, span, div, img, input[type="button"], input[type="submit"]'));
-                            btn = elements.find(el => (el.innerText && el.innerText.includes(text)) || (el.alt && el.alt.includes(text)) || (el.value && el.value.includes(text)));
+                            const elements = Array.from(document.querySelectorAll('button, a, span, div, img'));
+                            btn = elements.find(el => el.innerText && el.innerText.includes(text)) || elements.find(el => el.alt && el.alt.includes(text));
                         }}
-                        if (btn) btn.click();
+                        if (btn) {{
+                            const ageCheck = document.querySelector('input[type="checkbox"]');
+                            if (ageCheck && !ageCheck.checked) ageCheck.click();
+                            btn.click();
+                        }}
+                        await new Promise(r => setTimeout(r, 2000));
                         return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
                     }})();
                     """
                     result1 = await web_crawler.arun(url=url_to_fetch, config=self.crawl_config, headers=headers, js_code=omni_js, wait_for=".movie-box, .bigImage, .photo-info, .item, .container")
                 
                 elif solution.action == SolverAction.SEARCH and solution.search_input_selector:
-                    print(f"OmniSolver searching for '{scene_name}' using selector {solution.search_input_selector}")
                     search_js = f"""
                     return (async () => {{
                         const input = document.querySelector("{solution.search_input_selector}");
                         if (input) {{
                             input.value = "{scene_name}";
                             input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            input.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            const btnSelector = "{solution.search_button_selector or ""}";
-                            let btn = btnSelector ? document.querySelector(btnSelector) : null;
-                            if (!btn) btn = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
+                            const btn = document.querySelector("{solution.search_button_selector or 'button[type=submit]'}");
                             if (btn) btn.click();
-                            else input.dispatchEvent(new KeyboardEvent('keydown', {{'key': 'Enter'}}));
                         }}
                         await new Promise(r => setTimeout(r, 2000));
                         return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
                     }})();
                     """
                     result1 = await web_crawler.arun(url=url_to_fetch, config=self.crawl_config, headers=headers, js_code=search_js, wait_for=".movie-box, .bigImage, .photo-info, .item, .container")
-
+                
                 has_results = check_has_results(result1.markdown)
-            except Exception as e:
-                print(f"OmniSolver failed: {e}")
+            except Exception: pass
 
-        # Fallback to Homepage + Discovery if still no results
         if not has_results:
-            print(f"run_search: Still no results for '{scene_name}'. Attempting self-healing discovery...")
             new_pattern = await self.auto_discover_site(web_crawler)
             if new_pattern:
-                # Retry with new pattern
                 new_url = new_pattern.format(scene_name=quote_plus(scene_name))
-                print(f"Retrying search with discovered pattern: {new_url}")
                 result1 = await web_crawler.arun(url=new_url, config=self.crawl_config, headers=headers)
                 has_results = check_has_results(result1.markdown)
 
-        # Final check for detail page
-        current_url = result1.url.rstrip("/")
-        if self.config.site == "javbus" and current_url.split("/")[-1].upper() == scene_name.upper():
-            res = {"id": scene_name, "page_url": result1.url}
-            await self._save_search_result(scene_name, res)
-            return res
-
-        lines_output = str(result1.markdown)
-
-        if self.config.verbose:
+        if has_results:
             my_file = self.logdir / f"my_file_{scene_name}.txt"
-            try:
-                my_file.parent.mkdir(parents=True, exist_ok=True)
-                my_file.write_text(lines_output)
-            except Exception as e:
-                print(f"Warning: could not write demo file: {e}", file=sys.stderr)
+            my_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(my_file, "w", encoding="utf-8") as f:
+                f.write(result1.markdown)
+            
+            from .lib.load_search import load_search_results
+            res_list = load_search_results(my_file, self.config.site)
+            if res_list:
+                await self._save_search_result(scene_name, res_list[0])
+                return res_list[0]
+        return None
 
-        for line in lines_output.splitlines():
-            if line.strip().startswith('[') and "![]" in line:
-                st, result = self.parse_line(line)
-                if result and scene_name and result.get("id") == scene_name:
-                    await self._save_search_result(scene_name, result)
-                    return result
-        raise SearchFailedError(f"Could not find a valid search result for '{scene_name}' in the page output.")
 
+    async def _process_single_scene(self, scene_name: str, web_crawler: AsyncWebCrawler, run_search: bool, run_parse: bool, run_download: bool):
+        search_result = None
+        if run_search:
+            search_result = await self.run_search(scene_name, web_crawler)
+        
+        if not search_result:
+            # Try to load existing search result
+            search_file = self.search_dir / f"{self.config.site}_search.json"
+            if search_file.exists():
+                with open(search_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    search_result = data.get(scene_name)
+        
+        detail = None
+        if run_parse and search_result:
+            detail = await self.run_parse(scene_name, search_result, web_crawler)
+            
+        # Use actual ID from detail if available, otherwise fallback to scene_name
+        actual_id = scene_name
+        if detail and isinstance(detail, dict) and detail.get("id"):
+            actual_id = detail["id"]
+        elif not detail:
+            # If run_parse wasn't run or failed, check if we can find a normalized ID folder
+            # For simplicity, we fallback to scene_name, but the folder might be different.
+            pass
+
+        if run_download or self.config.download_image:
+            await self.run_download(actual_id)
+            
+        if run_download:
+            await self._check_and_save_magnets(actual_id)
     async def _fetch_javbus_magnets(self, html: str, page_url: str):
-        import re as local_re
-        gid_m = local_re.search(r"gid\s*=\s*([0-9]+)", html)
-        uc_m = local_re.search(r"uc\s*=\s*([0-9]+)", html)
-        img_m = local_re.search(r"img\s*=\s*\'([^\']+)\'", html)
-        if not (gid_m and uc_m and img_m): return []
-        gid, uc, img = gid_m.group(1), uc_m.group(1), img_m.group(1)
+        gid_m = re.search(r"gid\s*=\s*([0-9]+)", html)
+        uc_m = re.search(r"uc\s*=\s*([0-9]+)", html)
+        img_m = re.search(r"img\s*=\s*'([^']+)'", html)
+        
+        if not (gid_m and uc_m and img_m):
+            print("Failed to find javbus variables in HTML")
+            return []
+            
+        gid = gid_m.group(1)
+        uc = uc_m.group(1)
+        img = img_m.group(1)
+        
+        # Updated endpoint from historical fixes
+        endpoints = [
+            "https://www.javbus.com/ajax/uncledatoolsbyajax.php"
+        ]
+        
         headers = self._get_http_headers()
         headers["Referer"] = page_url
         headers["X-Requested-With"] = "XMLHttpRequest"
-        ajax_url = f"https://www.javbus.com/ajax/uncledatoolsbyajax.php?gid={gid}&lang=zh&img={img}&uc={uc}"
-        async with self._get_client_session(headers=headers) as session:
-            try:
-                async with session.get(ajax_url, timeout=10) as resp:
-                    if resp.status == 200:
-                        ajax_html = await resp.text()
-                        if not ajax_html.strip(): return []
-                        from bs4 import BeautifulSoup
-                        soup = BeautifulSoup(ajax_html, "lxml")
-                        magnets = []
-                        for tr in soup.select("tr"):
-                            tds = tr.select("td")
-                            if len(tds) >= 3:
-                                a_tags = tds[0].select("a")
-                                if not a_tags: continue
-                                uri = a_tags[0].get("href", "")
-                                if not uri.startswith("magnet"): continue
-                                name = " ".join(tds[0].text.strip().split())
-                                size = tds[1].text.strip()
-                                date = tds[2].text.strip()
-                                magnets.append({"name": name, "uri": uri, "total_size": size, "date": date})
-                        return magnets
-            except Exception as e: pass
+        
+        async with aiohttp.ClientSession(headers=headers) as session:
+            for endpoint in endpoints:
+                ajax_url = f"{endpoint}?gid={gid}&lang=zh&img={img}&uc={uc}"
+                try:
+                    async with session.get(ajax_url, timeout=10) as resp:
+                        if resp.status == 200:
+                            ajax_html = await resp.text()
+                            if not ajax_html.strip(): continue
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(ajax_html, "lxml")
+                            magnets = []
+                            for tr in soup.select("tr"):
+                                links = tr.select("a")
+                                if len(links) >= 3:
+                                    magnets.append({
+                                        "name": links[0].text.strip(),
+                                        "uri": links[0].get("href"),
+                                        "total_size": links[1].text.strip(),
+                                        "date": links[2].text.strip()
+                                    })
+                            if magnets: return magnets
+                except Exception as e:
+                    print(f"Failed to fetch javbus magnets from {endpoint}: {e}")
         return []
 
     async def run_parse(self, scene_name: str, search_result: dict, web_crawler: AsyncWebCrawler):
         url = search_result.get('page_url')
         if not url: return
 
-        print(f"Scraping page URL: {url}")
-        
         soup = await self._fetch_soup_safe(url, web_crawler)
         detail = {}
         
         if soup:
-            # Manual extraction using BeautifulSoup (Fast Path)
             if self.config.site == "javbus":
-                title_node = soup.select_one(".container h3") or soup.select_one(".header h3")
-                detail["title"] = title_node.text.strip() if title_node else ""
-                
-                info_block = soup.select_one(".col-md-3.info") or soup.select_one(".info")
-                if info_block:
-                    for p in info_block.select("p"):
-                        text = p.get_text(separator=' ', strip=True)
-                        if "識別碼:" in text or "ID:" in text:
-                            detail["id"] = text.split(":")[-1].strip()
-                        elif "發行日期:" in text:
-                            detail["release_date"] = text.split(":")[-1].strip()
-                        elif "長度:" in text:
-                            detail["length"] = text.split(":")[-1].strip()
-                        elif "導演:" in text:
-                            detail["director"] = text.split(":")[-1].strip()
-                        elif "製作商:" in text:
-                            detail["studio"] = text.split(":")[-1].strip()
-                        elif "發行商:" in text:
-                            detail["label"] = text.split(":")[-1].strip()
-                    
-                    genres = []
-                    for span in info_block.select("span.genre a[href*='/genre/']"):
-                        genres.append(span.text.strip())
-                    if genres:
-                        detail["genres"] = genres
-                        
-                    # HARVEST PERFORMERS
-                    detail["performers"] = []
-                    seen = set()
-                    for a in info_block.select("a[href*='/star/']"):
-                        p_name = a.text.strip()
-                        p_url = a.get('href', '')
-                        if p_name and p_url and p_url not in seen:
-                            if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
-                            
-                            primary_name, credited_as = self._resolve_actor_name(p_name)
-                            p_data = {"name": primary_name, "url": p_url}
-                            if credited_as:
-                                p_data["credited_as"] = credited_as
-                                
-                            detail["performers"].append(p_data)
-                            seen.add(p_url)
-                else:
-                    for p in soup.select(".photo-info p") or soup.select("p"):
-                        if "識別碼" in p.text or "ID" in p.text:
-                            if ":" in p.text:
-                                detail["id"] = p.text.split(":")[-1].strip()
-                                break
-                    # HARVEST PERFORMERS (Fallback)
-                    detail["performers"] = []
-                    for a in soup.select('a[href*="/star/"]'):
-                        p_name = a.text.strip()
-                        p_url = a.get('href', '')
-                        if p_name and p_url:
-                            if not p_url.startswith('http'): p_url = "https://www.javbus.com" + p_url
-                            
-                            primary_name, credited_as = self._resolve_actor_name(p_name)
-                            p_data = {"name": primary_name, "url": p_url}
-                            if credited_as:
-                                p_data["credited_as"] = credited_as
-                                
-                            detail["performers"].append(p_data)
-                
-                if not detail.get("id"): detail["id"] = scene_name
-                
-                cover_img = soup.select_one(".bigImage img")
-                if cover_img:
-                    src = cover_img["src"]
-                    if not src.startswith("http"): src = "https://www.javbus.com" + src
-                    detail["cover_image"] = src
-                
-                detail["sample_images"] = []
-                for img in soup.select(".sample-box img"):
-                    src = img.get("src")
-                    if src:
-                        if not src.startswith("http"): src = "https://www.javbus.com" + src
-                        detail["sample_images"].append(src)
-
-                detail["magnet_entries"] = await self._fetch_javbus_magnets(str(soup), url)
+                from .sites.javbus.parser import extract_javbus_detail
+                detail = await extract_javbus_detail(soup, scene_name, url, self)
         
-        # Fallback to Javascript Extractor if soup failed or manual parse was incomplete
         if not detail or (self.config.site == "javbus" and not detail.get("magnet_entries")):
             extractor_js = SITES_CONFIG.get(self.config.site, {}).get("detail_js_extractor")
             if extractor_js:
                  result = await web_crawler.arun(url=url, config=self.crawl_config, headers=self._get_http_headers(), js_code=extractor_js)
                  js_out = getattr(result, 'js_execution_result', None) or {}
                  results_arr = js_out.get('results', [])
-                 if isinstance(results_arr, list) and results_arr:
+                 if results_arr and isinstance(results_arr[0], dict):
                      detail = results_arr[0]
-                     if isinstance(detail, dict):
-                         self.dynamic_cookie = detail.get('cookie', self.dynamic_cookie)
-                         self.dynamic_user_agent = detail.get('userAgent', self.dynamic_user_agent)
-
-        if not detail or not detail.get("id") or detail.get("id") == "JavBus":
+        
+        if not detail or not detail.get("id"):
             try:
                 from .sites.javdb import page_parser
-                if soup:
-                    detail = page_parser.parse_from_text(soup.get_text(), id_hint=scene_name)
-            except: pass
+                if self.config.site == "javdb":
+                    result = await web_crawler.arun(url=url, config=self.crawl_config, headers=self._get_http_headers())
+                    if result and result.markdown:
+                        detail = page_parser.parse_from_text(result.markdown, id_hint=scene_name)
+            except Exception: pass
 
         if detail:
-            if not detail.get("id"): detail["id"] = scene_name
-            media_dir = self.media_dir / detail["id"]
+            from .lib.normalizer import normalize_detail
+            from .lib.refiner import refine_detail_async
+            from .lib.ontology import MediaFossil
+            
+            source_site = "javdb" if "javdb.com" in url else "javbus"
+            normalized = normalize_detail(detail, source_site)
+            normalized = await refine_detail_async(normalized)
+            
+            if not normalized.id: normalized.id = scene_name
+            media_dir = self.media_dir / normalized.id
             media_dir.mkdir(parents=True, exist_ok=True)
-            detail_file = media_dir / f"{detail['id']}.json"
             
-            detail = self._inject_meta(detail)
+            detail_file = media_dir / f"{normalized.id}.json"
+            fossil_file = media_dir / f"fossil_{normalized.id}.json"
             
-            with open(detail_file, 'w', encoding='utf-8') as fh:
-                json.dump(detail, fh, ensure_ascii=False, indent=2)
-            print(f"Wrote {detail_file}")
+            final_data = self._inject_meta(normalized.model_dump())
+            fossil = MediaFossil(id=normalized.id, site=source_site, scraped_at=datetime.datetime.now().isoformat(), raw_data=detail)
             
-            if self.config.merge_detail:
-                try:
-                    from .lib import merge_detail_into_search as merger
-                    merger.merge_detail(detail_file, self.config.site, search_dir=str(self.search_dir))
-                except: pass
+            with open(detail_file, 'w', encoding='utf-8') as fh: json.dump(final_data, fh, ensure_ascii=False, indent=2)
+            with open(fossil_file, 'w', encoding='utf-8') as fh: json.dump(fossil.model_dump(), fh, ensure_ascii=False, indent=2)
+            print(f"Wrote refined entity to {detail_file}")
             return detail
         return None
 
-    async def run_download(self, scene_name: str):
-        detail_file = self.media_dir / scene_name / f"{scene_name}.json"
-        if self.config.download_image:
+    def _load_active_scan(self) -> dict:
+        if os.path.exists(self.config.active_scan_file):
             try:
-                from .lib import download_samples as downloader
-                
-                headers = {
-                    'Cookie': self.dynamic_cookie,
-                    'User-Agent': self.dynamic_user_agent,
-                    'Referer': SITES_CONFIG.get(self.config.site, {}).get("home_url", "") + "/"
-                }
-                
-                res = await downloader.process_detail_file_async(detail_file, media_dir=str(self.media_dir), headers=headers)
-                if res and isinstance(res, dict):
-                    for dl in res.get('downloaded', []):
-                        print(f"Downloaded image: {dl}")
-                    for fl in res.get('failed', []):
-                        print(f"Failed to download image: {fl}")
-                    if not res.get('downloaded') and not res.get('failed') and res.get('skipped'):
-                        print("Images already exist, skipping download.")
-                return res
-            except Exception as e:
-                print(f"Download step failed: {e}")
-                return None
-        else:
-            print("Download skipped (use --download-image to enable)")
-            return None
-
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((SearchFailedError, PageParseError, DownloadHttpError, DownloadUrlError))
-    )
-    async def _process_single_scene(self, scene: str, web_crawler: AsyncWebCrawler, run_search: bool, run_parse: bool, run_download: bool):
-        """Wrapper function to process a single scene with retry logic."""
-        search_result = {}
-        if run_search:
-            search_result = await self.run_search(scene, web_crawler)
-        
-        if run_parse:
-            if not search_result: # If search was skipped, load the result
-                try:
-                    with open(self.search_dir / f"{self.config.site}_search.json", 'r') as f:
-                        search_data = json.load(f)
-                        search_result = search_data.get(scene)
-                        if not search_result:
-                            print(f"No search result found for '{scene}' in {self.search_dir}", file=sys.stderr)
-                            return # Don't retry if search result is missing
-                except (FileNotFoundError, json.JSONDecodeError):
-                    print(f"Could not load search results for '{scene}'", file=sys.stderr)
-                    return # Don't retry if search file is missing
-
-            await self.run_parse(scene, search_result, web_crawler)
-        
-        if run_download:
-            return await self.run_download(scene)
-
-    async def _fetch_soup_safe(self, url: str, web_crawler: AsyncWebCrawler):
-        from bs4 import BeautifulSoup
-        
-        # Fast path: Try lightweight aiohttp first
-        async with self._get_client_session(headers=self._get_http_headers()) as session:
-            try:
-                async with session.get(url, timeout=10, allow_redirects=True) as resp:
-                    if resp.status == 200:
-                        html = await resp.text()
-                        if "你是否已經成年" not in html and "確認" not in html and "18歳以上" not in html:
-                            soup = BeautifulSoup(html, 'lxml')
-                            if soup.select('.movie-box') or soup.select('.bigImage') or soup.select('.photo-info'):
-                                return soup
-            except Exception:
-                pass
-
-        # Slow path: Fallback to crawl4ai for age-gate bypass
-        js_bypass = '''
-        return (() => {
-            const ageCheck = document.querySelector('input[type="checkbox"]');
-            if (ageCheck) ageCheck.click();
-            const btns = Array.from(document.querySelectorAll('button, a'));
-            const btn = btns.find(b => 
-                b.innerText.includes('成年') || 
-                b.innerText.includes('確認') || 
-                b.innerText.includes('18歳以上') ||
-                b.innerText.includes('Enter')
-            );
-            if (btn) btn.click();
-            return { cookie: document.cookie, userAgent: navigator.userAgent };
-        })();
-        '''
-        
-        for attempt in range(3):
-            result = await web_crawler.arun(
-                url=url, 
-                config=self.crawl_config, 
-                headers=self._get_http_headers(), 
-                js_code=js_bypass,
-                wait_for=".movie-box, .bigImage, .photo-info, button:has-text('成年'), button:has-text('確認')"
-            )
-            
-            # Update cookies
-            js_out = getattr(result, 'js_execution_result', None) or {}
-            results_arr = js_out.get('results', [])
-            if isinstance(results_arr, list) and results_arr:
-                res = results_arr[0]
-                if isinstance(res, dict):
-                    self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
-                    self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
-
-            html = result.html or ""
-            soup = BeautifulSoup(html, 'lxml')
-            if soup.select('.movie-box') or soup.select('.bigImage') or soup.select('.photo-info'):
-                return soup
-                
-            # If standard bypass failed, and we have a screenshot, try OmniSolver
-            b64_img = getattr(result, 'screenshot', None) or getattr(result, 'base64_screenshot', None)
-            if b64_img:
-                print("Standard bypass failed, detected possible complex CAPTCHA. Trying OmniSolver...")
-                try:
-                    from .lib.omni_solver import GeminiOmniSolver, SolverAction
-                    solver = GeminiOmniSolver()
-                    solution = solver.solve(b64_img, html)
-                    print(f"OmniSolver determined action: {solution.action}, target: {solution.target_text} - Reason: {solution.reasoning}")
-                    
-                    if solution.action == SolverAction.CLICK and solution.target_text:
-                        omni_js_bypass = f"""
-                        return (() => {{
-                            const elements = Array.from(document.querySelectorAll('button, a, span, div, img'));
-                            const targetText = "{solution.target_text}";
-                            // Find element exactly matching or containing the text
-                            const btn = elements.find(el => el.innerText && el.innerText.includes(targetText)) || 
-                                        elements.find(el => el.alt && el.alt.includes(targetText));
-                            if (btn) {{
-                                btn.click();
-                            }}
-                            return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
-                        }})();
-                        """
-                        result = await web_crawler.arun(
-                            url=url, 
-                            config=self.crawl_config, 
-                            headers=self._get_http_headers(), 
-                            js_code=omni_js_bypass,
-                            wait_for=".movie-box, .bigImage, .photo-info"
-                        )
-                        html = result.html or ""
-                        soup = BeautifulSoup(html, 'lxml')
-                        
-                        js_out = getattr(result, 'js_execution_result', None) or {}
-                        results_arr = js_out.get('results', [])
-                        if isinstance(results_arr, list) and results_arr:
-                            res = results_arr[0]
-                            if isinstance(res, dict):
-                                self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
-                                self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
-                                
-                        if soup.select('.movie-box') or soup.select('.bigImage') or soup.select('.photo-info'):
-                            return soup
-                    elif solution.action == SolverAction.WAIT:
-                        print("OmniSolver suggests waiting for automatic verification...")
-                        await asyncio.sleep(5) 
-                    elif solution.action == SolverAction.SOLVED:
-                        print("OmniSolver detected page is already solved/ready.")
-                        return soup
-                except Exception as e:
-                    print(f"OmniSolver failed or not configured: {e}")
-
-            print(f"Age gate / CAPTCHA still present after attempt {attempt+1}, retrying...")
-            await asyncio.sleep(2)
-
-        return BeautifulSoup(html, 'lxml')
-
-    def _is_magnet_recent(self, date_str: str) -> bool:
-        if not date_str:
-            return True # Keep if we can't tell
-        try:
-            # Javbus format is typically YYYY-MM-DD
-            mag_date = datetime.datetime.strptime(date_str.strip(), "%Y-%m-%d")
-            limit_date = datetime.datetime.now() - datetime.timedelta(days=self.config.magnet_max_age_days)
-            return mag_date >= limit_date
-        except ValueError:
-            # If format changes or is malformed, fail open (keep it)
-            return True
-
-    def _check_and_save_magnets(self, scene_id: str):
-        detail_file = self.media_dir / scene_id / f"{scene_id}.json"
-        if detail_file.exists():
-            try:
-                import os, json
-                
-                with open(detail_file, 'r', encoding='utf-8') as df:
-                    ddata = json.load(df)
-                    
-                    existing_lines = []
-                    magnet_file = self.config.magnet_output_file
-                    if os.path.exists(magnet_file):
-                        with open(magnet_file, 'r', encoding='utf-8') as mf:
-                            existing_lines = mf.read().splitlines()
-                            
-                    for mag in ddata.get('magnet_entries', []):
-                        if not self._is_magnet_recent(mag.get('date', '')):
-                            continue
-                        size_gb = parse_size_to_gb(mag.get('total_size', ''))
-                        if size_gb > 1.2:
-                            uri = mag.get('uri')
-                            if uri not in existing_lines:
-                                os.makedirs(os.path.dirname(magnet_file), exist_ok=True)
-                                with open(magnet_file, 'a', encoding='utf-8') as mf:
-                                    mf.write(uri + "\n")
-                                existing_lines.append(uri)
-                                print(f"Saved magnet (>1.2GB) for {scene_id}: {size_gb:.2f}GB")
-            except Exception as e:
-                print(f"Failed to check magnets for {scene_id}: {e}", file=sys.stderr)
-
-    def _load_active_scan(self) -> Dict[str, str]:
-        as_path = Path(self.config.active_scan_file)
-        if as_path.exists():
-            try:
-                with open(as_path, 'r', encoding='utf-8') as f:
+                with open(self.config.active_scan_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Error loading active scan JSON: {e}")
+                print(f"Failed to load active scan data: {e}")
         return {}
 
-    def _save_active_scan(self, data: Dict[str, str]):
-        as_path = Path(self.config.active_scan_file)
-        as_path.parent.mkdir(parents=True, exist_ok=True)
+    def _save_active_scan(self, data: dict):
         try:
-            with open(as_path, 'w', encoding='utf-8') as f:
+            with open(self.config.active_scan_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"Failed to save active scan JSON: {e}")
+            print(f"Failed to save active scan data: {e}")
 
     async def _harvest_performers(self, detail_data: dict, web_crawler: AsyncWebCrawler):
         performers = detail_data.get('performers', [])
@@ -953,6 +867,92 @@ class Crawler:
         if updated:
             self._save_active_scan(active_scan_data)
 
+    def _is_complete(self, scene_id: str) -> bool:
+        from .lib.download_samples import is_scene_complete
+        detail_file = self.media_dir / scene_id / f"{scene_id}.json"
+        return is_scene_complete(detail_file, media_dir=str(self.media_dir))
+
+    def _is_magnet_recent(self, date_str: str) -> bool:
+        if not date_str:
+            return True
+        try:
+            # Handle formats like "2024-05-20"
+            date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            age = datetime.datetime.now() - date_obj
+            return age.days <= self.config.magnet_max_age_days
+        except ValueError:
+            return True
+
+    async def _check_and_save_magnets(self, scene_id: str):
+        detail_file = self.media_dir / scene_id / f"{scene_id}.json"
+        if not detail_file.exists():
+            return
+            
+        try:
+            with open(detail_file, 'r', encoding='utf-8') as f:
+                detail = json.load(f)
+        except Exception:
+            return
+            
+        magnets = detail.get('magnet_entries', []) or detail.get('magnets', [])
+        if not magnets:
+            return
+            
+        magnet_file = Path(self.config.magnet_output_file)
+        magnet_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        saved_count = 0
+        try:
+            with open(magnet_file, 'a', encoding='utf-8') as mf:
+                for mag in magnets:
+                    # Check date
+                    date_val = mag.get('date', '')
+                    if not self._is_magnet_recent(date_val):
+                        continue
+                    
+                    # Check size
+                    size_str = mag.get('total_size') or mag.get('size_gb', '0')
+                    if isinstance(size_str, (float, int)):
+                        gb = float(size_str)
+                    else:
+                        gb = parse_size_to_gb(str(size_str))
+                        
+                    if gb > 1.2:
+                        uri = mag.get('uri') or mag.get('link')
+                        if uri:
+                            mf.write(uri + '\n')
+                            saved_count += 1
+            
+            if saved_count > 0:
+                print(f" Saved {saved_count} magnets for {scene_id} to {magnet_file}")
+        except Exception as e:
+            print(f"Failed to save magnets for {scene_id}: {e}")
+
+    async def run_download(self, scene_id: str):
+        from .lib.download_samples import process_detail_file_async
+        detail_file = self.media_dir / scene_id / f"{scene_id}.json"
+        if not detail_file.exists():
+            print(f"Download skipped for {scene_id}: Detail file {detail_file} not found")
+            return
+            
+        print(f"Downloading images for {scene_id}...")
+            
+        headers = {
+            'Cookie': self.dynamic_cookie,
+            'User-Agent': self.dynamic_user_agent,
+            'Referer': SITES_CONFIG.get(self.config.site, {}).get("home_url", "https://www.javbus.com") + "/"
+        }
+        try:
+            results = await process_detail_file_async(detail_file, media_dir=str(self.media_dir), headers=headers)
+            if results:
+                dl = len(results.get('downloaded', []))
+                sk = len(results.get('skipped', []))
+                fa = len(results.get('failed', []))
+                if dl > 0 or fa > 0:
+                    print(f"  Images for {scene_id}: {dl} downloaded, {sk} skipped, {fa} failed")
+        except Exception as e:
+            print(f"Download failed for {scene_id}: {e}")
+
     async def _process_discovered_media(self, scene_id: str, title: str, page_url: str, web_crawler: AsyncWebCrawler):
         if not self.config.force and self._is_complete(scene_id):
             print(f"Skipping '{scene_id}' as it appears complete. Use --force to re-process.")
@@ -967,9 +967,11 @@ class Crawler:
             detail = await self.run_parse(scene_id, {'page_url': page_url}, web_crawler)
             if detail:
                 await self._harvest_performers(detail, web_crawler)
+                if isinstance(detail, dict) and detail.get("id"):
+                    scene_id = detail["id"]
             if self.config.download_image:
                 await self.run_download(scene_id)
-        self._check_and_save_magnets(scene_id)
+        await self._check_and_save_magnets(scene_id)
 
     def _add_to_actor_media_list(self, actor_name: str, scene_id: str, title: str):
         primary_name, _ = self._resolve_actor_name(actor_name)
@@ -1806,9 +1808,10 @@ class Crawler:
 
         detail['magnet_entries'] = magnets
 
-        detail_dir = self.media_dir / detail['id']
+        actual_id = detail.get('id', scene_id)
+        detail_dir = self.media_dir / actual_id
         detail_dir.mkdir(parents=True, exist_ok=True)
-        detail_file = detail_dir / f"{detail['id']}.json"
+        detail_file = detail_dir / f"{actual_id}.json"
 
         detail = self._inject_meta(detail)
 
@@ -1816,20 +1819,11 @@ class Crawler:
             json.dump(detail, f, ensure_ascii=False, indent=2)
         print(f"Wrote {detail_file}")
         
-        if self.config.run_download:
-            await self.run_download(scene_id)
+        if self.config.run_download or self.config.download_image:
+            await self.run_download(actual_id)
             
         # Append magnets
-        magnet_file = self.config.magnet_output_file
-        for mag in magnets:
-            if not self._is_magnet_recent(mag.get('date', '')):
-                continue
-            gb = parse_size_to_gb(mag['total_size'])
-            if gb > 1.2:
-                os.makedirs(os.path.dirname(magnet_file), exist_ok=True)
-                with open(magnet_file, 'a', encoding='utf-8') as mf:
-                    mf.write(mag['uri'] + '\n')
-                print(f" Saved magnet: {gb:.2f}GB")
+        await self._check_and_save_magnets(actual_id)
 
     async def process_scenes(self, run_search: bool, run_parse: bool, run_download: bool):
         if self.config.native_fetch:
@@ -1849,16 +1843,25 @@ class Crawler:
                 await asyncio.gather(*tasks)
             return
 
-        browser_conf = BrowserConfig(
-            headless=True,
-            user_data_dir=self.config.user_data_dir,
-            extra_args=[
-                "--disable-ipv6",
-                "--disable-network-manager-config",
-                "--disable-background-networking",
-                "--no-sandbox"
-            ]
-        )
+        if self.config.cdp_url:
+            print(f"Connecting to remote browser via CDP at {self.config.cdp_url}")
+            browser_conf = BrowserConfig(
+                cdp_url=self.config.cdp_url,
+                headless=False,
+                use_managed_browser=False
+            )
+        else:
+            browser_conf = BrowserConfig(
+                headless=True,
+                user_data_dir=self.config.user_data_dir,
+                use_managed_browser=True,
+                extra_args=[
+                    "--disable-ipv6",
+                    "--disable-network-manager-config",
+                    "--disable-background-networking",
+                    "--no-sandbox"
+                ]
+            )
         async with AsyncWebCrawler(config=browser_conf) as web_crawler:
             print(f"Initializing session context...")
             await self._fetch_soup_safe(SITES_CONFIG.get(self.config.site, {}).get('home_url', 'https://www.javbus.com'), web_crawler)
@@ -1929,7 +1932,9 @@ async def main():
     parser.add_argument("--retry-limit", type=int, default=None, help="Number of retries")
     parser.add_argument("--min-delay", type=str, default=crawler_defaults.get("min_delay", "10s"), help="Min delay")
     parser.add_argument("--max-delay", type=str, default=crawler_defaults.get("max_delay", "90s"), help="Max delay")
-    parser.add_argument("--user-data-dir", default="./chrome-profile", help="Chrome profile path")
+    parser.add_argument("--user-data-dir", default=os.path.join(CRAW_CONF, "browser_profile"), help="Chrome profile path")
+    parser.add_argument("--cdp-url", default=crawler_defaults.get("cdp_url"), help="Chrome DevTools Protocol URL (e.g. http://localhost:9222) to attach to an existing browser")
+    parser.add_argument("--local-cookies", action="store_true", help="Extract clearance cookies directly from the OS local browser (Chrome/Safari) using browser_cookie3")
     parser.add_argument("--user-agent", default=crawler_defaults.get("user_agent"), help="Custom User-Agent")
     parser.add_argument("--dry-run", action="store_true", help="Dry run")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
@@ -1961,6 +1966,8 @@ async def main():
     config.magnet_max_age_days = args.magnet_max_age
     config.user_agent = args.user_agent or os.environ.get("USER_AGENT") or config.user_agent
     config.site = args.site
+    config.cdp_url = args.cdp_url
+    config.use_local_cookies = args.local_cookies
     config.merge_detail = args.merge_detail
     config.download_image = args.download_image
     config.force = args.force
@@ -1996,7 +2003,10 @@ async def main():
         from .lib.pipeline import AutonomousOrchestrator
         orchestrator = AutonomousOrchestrator(c)
         from crawl4ai import AsyncWebCrawler, BrowserConfig
-        browser_conf = BrowserConfig(headless=True, user_data_dir=config.user_data_dir)
+        if config.cdp_url:
+            browser_conf = BrowserConfig(cdp_url=config.cdp_url, headless=False, use_managed_browser=False)
+        else:
+            browser_conf = BrowserConfig(headless=True, user_data_dir=config.user_data_dir, use_managed_browser=True)
         async with AsyncWebCrawler(config=browser_conf) as web_crawler:
             await orchestrator.profile_site(args.profile_site, web_crawler)
         return
@@ -2037,6 +2047,10 @@ async def main():
     else:
         if not any([run_search, run_parse, run_download]):
             run_search = run_parse = run_download = True
+        
+        config.run_search = run_search
+        config.run_parse = run_parse
+        config.run_download = run_download
         
         await c.process_scenes(run_search, run_parse, run_download)
         

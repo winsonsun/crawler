@@ -34,3 +34,6 @@ test_sandbox
 release
 
 data
+
+*.html
+*.png

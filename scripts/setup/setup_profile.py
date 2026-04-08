@@ -1,7 +1,10 @@
 # setup_profile.py
 import asyncio
 import argparse
+import os
 from crawl4ai import AsyncWebCrawler, BrowserConfig
+
+CRAW_CONF = os.environ.get("CRAW_CONF", "./config")
 
 async def setup(profile_dir: str, site_url: str, remote_debugging_port: int):
     """
@@ -45,8 +48,8 @@ def main():
     )
     parser.add_argument(
         "--profile-dir",
-        default="./chrome-profile",
-        help="The directory to create and store the browser profile in (default: ./chrome-profile)"
+        default=os.path.join(CRAW_CONF, "browser_profile"),
+        help="The directory to create and store the browser profile in (default: config/browser_profile)"
     )
     parser.add_argument(
         "--site-url",
