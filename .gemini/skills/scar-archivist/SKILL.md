@@ -9,8 +9,9 @@ This skill operationalizes the "Living Territory" philosophy by recording enviro
 ## Core Workflow
 
 1. **Analyze the Failure:** Review the user's provided error, stack trace, or description of the failure.
-2. **Abstract the Physics:** Determine the underlying environmental rule that caused the failure (e.g., "JavBus implemented a new Turnstile CAPTCHA").
-3. **Determine the Constraint:** Identify the boundary this places on the architecture (e.g., "Requests library is obsolete here; must use a headed browser or inject pre-solved cookies").
+2. **Abstract the Physics:** Determine the underlying environmental rule that caused the failure (e.g., "JavBus implemented a new Turnstile CAPTCHA"). 
+    - **Proactive Generalization:** Identify if this physics is **Transferable** (e.g., "Sequential Click Dependency" or "Stateful Checkbox"). If so, flag it for future site-wide adoption.
+3. **Determine the Constraint & Schema Impact:** Identify the boundary this places on the architecture (e.g., "Requests library is obsolete here; must use a headed browser or inject pre-solved cookies"). You MUST consult `SCHEMA_DEPENDENCY_FOREST.md` to identify which specific Data Node or Operator (e.g., `_fetch_soup_safe`, `RawDetailJSON_Schema`) is failing, and list its downstream dependents that are currently starved of data.
 4. **Record the Scar:** Use the bundled `scripts/record_scar.py` to append the abstracted scar to the workspace's `FOSSIL_RECORD.md`.
 
 ## Output Standards

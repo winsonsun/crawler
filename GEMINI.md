@@ -53,9 +53,31 @@ Ignore low-value data (marketing slogans, redundant site names) to maintain high
 The "Self-Critiquing Data Architecture" applies strictly to the **Project's Folder Structure and File Organization**.
 - **Workspace as Semantic Index:** Operational scripts, adapters, and configuration files must be hierarchically organized based on their semantic domain (e.g., `tools/maintenance/`, `src/crawler/sites/`). Avoid polluting the project root with loose `.py` scripts.
 - **Data Folder Immunity:** The `data/` folder is the system's database. It MUST NOT be structurally refactored or re-organized during "State Compression" unless explicitly requested by the user.
-- **Script Deduplication (Virtual Symlinks vs. Duplication):** Do not duplicate utility scripts across folders. If a tool needs to be exposed in multiple locations, use either OS "Virtual Symlinks" (wrapper scripts that import the core logic) or explicit duplication. When the choice is ambiguous based on the scenario, you MUST ask the user for their preference.
+- **Script Deduplication (Virtual Symlinks vs. Duplication):** Do not duplicate utility scripts across folders. If a tool needs to be exposed in multiple locations, use either OS "Virtual Symlinks" (wrapper scripts that import the core logic) or explicit duplication. When the choice is ambiguous based on the scenario, you MUST ask the user for preference.
 
+### 5.7 Mandate of Impact Guardrails (The Safety Valve)
+- **Pre-Change Validation:** Before integrating a high-entropy site (e.g., `javdb.com`) or performing core refactors, you MUST evaluate the potential impact on existing successful adapters.
+- **Safety Snapshots:** Always ensure changes are committed or backed up before major architectural mutations. Never "fly blind" into a refactor.
 
-## 6. Constrains
+### 5.8 The Bypass & Reset Hierarchy (Efficiency First)
+When overcoming anti-bot constraints, follow this priority to minimize cost and maximize stability:
+1. **History Preservation:** Use existing valid cookies/sessions (e.g., `cf_clearance`, `age=verified`).
+2. **Proactive Injection:** Inject known critical cookies (e.g., `existmag=all`) before the request.
+3. **Temporal Spacing:** Apply delays for stateful interactions (e.g., checking a box before clicking).
+4. **Autonomous Vision:** Use OmniSolver to reason through novel UI challenges.
+5. **Nuclear Reset:** "Working from Zero" (clearing all history) is the **LAST RESORT** and must only be used if history is proven to be "poisoned."
 
+### 5.9 Mandate of Empirical Validation (The 3 Layers)
+Code is assumed broken until proven empirically in the current turn. You must validate your work across three layers:
+1. **Micro-Validation (The Patch):** Every patch must be proven by a minimal reproduction script (e.g., `scripts/debug/test_patch.py`) that successfully executes the bypassed action.
+2. **Semantic Integration (The Business Guardrail):** You must prove the patch extracts **Business-Critical Data** (specifically checking that the implicit 'uploaded date' and sizes of magnet links are captured). If modifying shared/core logic, you MUST run a test against a secondary pipeline (e.g., if fixing JavDB, verify JavBus still works) to prevent cross-site regressions.
+3. **Macro-Validation (Hash Parity):** During architectural refactoring, you must verify that the JSON output hash of a known entity remains identical before and after the compression.
+
+### 5.10 Mandate of Schema-First Impact Analysis
+Before modifying any core logic, shared adapters, or output structures, you MUST consult the `SCHEMA_DEPENDENCY_FOREST.md`.
+- **Trace the Cascade:** Identify which downstream schemas will be affected by a change in a parent node.
+- **Verify Logic Sharing:** Check if an operator (like `_fetch_soup_safe`) is a "Shared Branch" across multiple site streams. If so, mandatory cross-site regression testing is required.
+- **Maintain Leaf Integrity:** Ensure leaf-node changes (e.g., actor aliases) do not accidentally corrupt the trunk schemas (media details).
+
+## 6. Constraints
 - When this project is trying to use LLM model, make sure it is newer or equal to "models/gemini-flash-latest", for Gemini SDK only.
