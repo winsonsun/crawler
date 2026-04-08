@@ -31,6 +31,7 @@ class ActressProfileSchema(BaseModel):
     bust: str = Field(description="Bust size in cm (e.g., '90cm')", default="")
     waist: str = Field(description="Waist size in cm (e.g., '60cm')", default="")
     hip: str = Field(description="Hip size in cm (e.g., '88cm')", default="")
+    metadata: Dict[str, str] = Field(default_factory=dict, description="Other interesting information found on the page (e.g., debut date, social media handles, hobbies not in the main list)")
 
 
 import re
@@ -106,11 +107,12 @@ class CrawlerConfig:
     retry_limit: int = 1
     min_delay: float = 10.0
     max_delay: float = 90.0
-    user_data_dir: str = None
+    user_data_dir: str = os.path.join(CRAW_CONF, "browser_profile")
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36"
     dry_run: bool = False
     verbose: bool = False
     discover: bool = False
+    profile_site: str = None
     collection_scan: bool = False
     discover_start_page: int = 1
     discover_pages: int = 3
@@ -171,8 +173,14 @@ class Crawler:
         self.crawl_config = CrawlerRunConfig(
             session_id=self.session_id,
             magic=True,
-            user_agent=self.dynamic_user_agent
+            user_agent=self.dynamic_user_agent,
+            screenshot=True
         )
+        
+        # Initial rotation to get a fresh modern UA if using default
+        if self.dynamic_user_agent == "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36":
+            self._rotate_user_agent()
+            
         self.search_lock = asyncio.Lock()
         
         # Load Global Aliases
@@ -184,6 +192,19 @@ class Crawler:
                     self.alias_map = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load alias map: {e}")
+
+    def _rotate_user_agent(self):
+        """Randomly selects a new User-Agent from a list of modern browser strings."""
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Edge/121.0.0.0"
+        ]
+        self.dynamic_user_agent = random.choice(user_agents)
+        self.crawl_config.user_agent = self.dynamic_user_agent
+        print(f"Rotated User-Agent to: {self.dynamic_user_agent}")
 
     def _inject_meta(self, data: dict) -> dict:
         import json
@@ -241,6 +262,104 @@ class Crawler:
             await asyncio.to_thread(sync_save)
             print(f"Saved search result for '{scene_name}' to '{filename}'")
 
+    async def update_sites_config(self, site_key: str, new_pattern: str):
+        """Persists an updated URL pattern to config/sites.json."""
+        sites_path = os.path.join(CRAW_CONF, "sites.json")
+        try:
+            with open(sites_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            if site_key in data:
+                old_pattern = data[site_key].get("url_template")
+                if old_pattern != new_pattern:
+                    print(f"Self-healing: Updating {site_key} url_template: {old_pattern} -> {new_pattern}")
+                    data[site_key]["url_template"] = new_pattern
+                    with open(sites_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                    # Also update in-memory config
+                    SITES_CONFIG[site_key]["url_template"] = new_pattern
+                    print("sites.json updated successfully.")
+        except Exception as e:
+            print(f"Error updating sites.json: {e}")
+
+    async def auto_discover_site(self, web_crawler: AsyncWebCrawler) -> Optional[str]:
+        """
+        Attempts to autonomously discover the search pattern for the current site.
+        Returns the discovered url_template if successful.
+        """
+        site_key = self.config.site
+        home_url = SITES_CONFIG.get(site_key, {}).get('home_url')
+        if not home_url:
+            return None
+
+        print(f"--- Starting autonomous site discovery for {site_key} ---")
+        
+        # 1. Initial attempt to reach home page
+        result = await web_crawler.arun(url=home_url, config=self.crawl_config)
+        
+        from .lib.omni_solver import GeminiOmniSolver, SolverAction
+        solver = GeminiOmniSolver()
+        
+        max_steps = 3
+        current_step = 0
+        
+        while current_step < max_steps:
+            current_step += 1
+            b64_img = getattr(result, 'screenshot', None) or getattr(result, 'base64_screenshot', None)
+            if not b64_img: break
+                
+            solution = solver.solve(b64_img, result.html or "")
+            print(f"Discovery Step {current_step}: Action={solution.action}, Reasoning={solution.reasoning}")
+            
+            if solution.action == SolverAction.CLICK:
+                js_click = f"""
+                (() => {{
+                    const selector = "{solution.target_selector or ""}";
+                    const text = "{solution.target_text or ""}";
+                    let btn;
+                    if (selector) btn = document.querySelector(selector);
+                    if (!btn && text) {{
+                        const elements = Array.from(document.querySelectorAll('button, a, span, div, img, input[type="button"], input[type="submit"]'));
+                        btn = elements.find(el => (el.innerText && el.innerText.includes(text)) || (el.alt && el.alt.includes(text)) || (el.value && el.value.includes(text)));
+                    }}
+                    if (btn) btn.click();
+                }})();
+                """
+                result = await web_crawler.arun(url=result.url, config=self.crawl_config, js_code=js_click)
+                await asyncio.sleep(2)
+                
+            elif solution.action == SolverAction.SEARCH:
+                # Perform a test search to discover the URL pattern
+                test_query = "ABC-123"
+                search_js = f"""
+                (async () => {{
+                    const input = document.querySelector("{solution.search_input_selector}");
+                    if (input) {{
+                        input.value = "{test_query}";
+                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        const btnSelector = "{solution.search_button_selector or ""}";
+                        let btn = btnSelector ? document.querySelector(btnSelector) : null;
+                        if (!btn) btn = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
+                        if (btn) btn.click();
+                        else input.dispatchEvent(new KeyboardEvent('keydown', {{'key': 'Enter'}}));
+                    }}
+                }})();
+                """
+                result = await web_crawler.arun(url=result.url, config=self.crawl_config, js_code=search_js)
+                await asyncio.sleep(3)
+                
+                if test_query in result.url:
+                    pattern = result.url.replace(test_query, "{scene_name}")
+                    print(f"Self-healing: Discovered new pattern: {pattern}")
+                    await self.update_sites_config(site_key, pattern)
+                    return pattern
+                return None
+            elif solution.action == SolverAction.SOLVED:
+                break
+            else:
+                break
+        return None
+
     def parse_line(self, line):
         if self.parser:
             try:
@@ -286,7 +405,90 @@ class Crawler:
         
         result1 = await web_crawler.arun(url=url_to_fetch, config=self.crawl_config, headers=headers, js_code=js_bypass)
         
-        # Check if we landed directly on a detail page (common for IDs on javbus)
+        # Check if we landed directly on a detail page
+        current_url = result1.url.rstrip("/")
+        if self.config.site == "javbus" and current_url.split("/")[-1].upper() == scene_name.upper():
+            res = {"id": scene_name, "page_url": result1.url}
+            await self._save_search_result(scene_name, res)
+            return res
+
+        def check_has_results(res_markdown):
+            return any(line.strip().startswith('[') and "![]" in line for line in str(res_markdown).splitlines())
+
+        has_results = check_has_results(result1.markdown)
+        b64_img = getattr(result1, 'screenshot', None) or getattr(result1, 'base64_screenshot', None)
+
+        if not has_results and b64_img:
+            print(f"run_search: No results found for '{scene_name}'. Trying tiered OmniSolver...")
+            try:
+                from .lib.omni_solver import GeminiOmniSolver, SolverAction
+                solver = GeminiOmniSolver()
+                
+                # Tier 1: Try HTML-only first
+                solution = solver.solve_from_html(result1.html or "")
+                if solution.action == SolverAction.FAILED:
+                    # Tier 2: Fallback to Vision
+                    print("Tiered Reasoning: HTML failed, using Vision...")
+                    solution = solver.solve(b64_img, result1.html or "")
+                else:
+                    print(f"Tiered Reasoning: Solution found via HTML: {solution.action}")
+
+                if solution.action == SolverAction.CLICK and (solution.target_text or solution.target_selector):
+                    target = solution.target_selector or solution.target_text
+                    print(f"OmniSolver clicking: {target}")
+                    omni_js = f"""
+                    return (() => {{
+                        const selector = "{solution.target_selector or ""}";
+                        const text = "{solution.target_text or ""}";
+                        let btn;
+                        if (selector) btn = document.querySelector(selector);
+                        if (!btn && text) {{
+                            const elements = Array.from(document.querySelectorAll('button, a, span, div, img, input[type="button"], input[type="submit"]'));
+                            btn = elements.find(el => (el.innerText && el.innerText.includes(text)) || (el.alt && el.alt.includes(text)) || (el.value && el.value.includes(text)));
+                        }}
+                        if (btn) btn.click();
+                        return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
+                    }})();
+                    """
+                    result1 = await web_crawler.arun(url=url_to_fetch, config=self.crawl_config, headers=headers, js_code=omni_js, wait_for=".movie-box, .bigImage, .photo-info, .item, .container")
+                
+                elif solution.action == SolverAction.SEARCH and solution.search_input_selector:
+                    print(f"OmniSolver searching for '{scene_name}' using selector {solution.search_input_selector}")
+                    search_js = f"""
+                    return (async () => {{
+                        const input = document.querySelector("{solution.search_input_selector}");
+                        if (input) {{
+                            input.value = "{scene_name}";
+                            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            const btnSelector = "{solution.search_button_selector or ""}";
+                            let btn = btnSelector ? document.querySelector(btnSelector) : null;
+                            if (!btn) btn = document.querySelector('button[type="submit"]') || document.querySelector('input[type="submit"]');
+                            if (btn) btn.click();
+                            else input.dispatchEvent(new KeyboardEvent('keydown', {{'key': 'Enter'}}));
+                        }}
+                        await new Promise(r => setTimeout(r, 2000));
+                        return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
+                    }})();
+                    """
+                    result1 = await web_crawler.arun(url=url_to_fetch, config=self.crawl_config, headers=headers, js_code=search_js, wait_for=".movie-box, .bigImage, .photo-info, .item, .container")
+
+                has_results = check_has_results(result1.markdown)
+            except Exception as e:
+                print(f"OmniSolver failed: {e}")
+
+        # Fallback to Homepage + Discovery if still no results
+        if not has_results:
+            print(f"run_search: Still no results for '{scene_name}'. Attempting self-healing discovery...")
+            new_pattern = await self.auto_discover_site(web_crawler)
+            if new_pattern:
+                # Retry with new pattern
+                new_url = new_pattern.format(scene_name=quote_plus(scene_name))
+                print(f"Retrying search with discovered pattern: {new_url}")
+                result1 = await web_crawler.arun(url=new_url, config=self.crawl_config, headers=headers)
+                has_results = check_has_results(result1.markdown)
+
+        # Final check for detail page
         current_url = result1.url.rstrip("/")
         if self.config.site == "javbus" and current_url.split("/")[-1].upper() == scene_name.upper():
             res = {"id": scene_name, "page_url": result1.url}
@@ -294,14 +496,6 @@ class Crawler:
             return res
 
         lines_output = str(result1.markdown)
-
-        js_out = getattr(result1, 'js_execution_result', None) or {}
-        results_arr = js_out.get('results', [])
-        if isinstance(results_arr, list) and results_arr:
-            res = results_arr[0]
-            if isinstance(res, dict):
-                self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
-                self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
 
         if self.config.verbose:
             my_file = self.logdir / f"my_file_{scene_name}.txt"
@@ -576,7 +770,7 @@ class Crawler:
         })();
         '''
         
-        for attempt in range(2):
+        for attempt in range(3):
             result = await web_crawler.arun(
                 url=url, 
                 config=self.crawl_config, 
@@ -595,11 +789,65 @@ class Crawler:
                     self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
 
             html = result.html or ""
-            if "你是否已經成年" not in html and "確認" not in html and "18歳以上" not in html:
-                return BeautifulSoup(html, 'lxml')
-            
-            print(f"Age gate still present after attempt {attempt+1}, retrying...")
-            await asyncio.sleep(1)
+            soup = BeautifulSoup(html, 'lxml')
+            if soup.select('.movie-box') or soup.select('.bigImage') or soup.select('.photo-info'):
+                return soup
+                
+            # If standard bypass failed, and we have a screenshot, try OmniSolver
+            b64_img = getattr(result, 'screenshot', None) or getattr(result, 'base64_screenshot', None)
+            if b64_img:
+                print("Standard bypass failed, detected possible complex CAPTCHA. Trying OmniSolver...")
+                try:
+                    from .lib.omni_solver import GeminiOmniSolver, SolverAction
+                    solver = GeminiOmniSolver()
+                    solution = solver.solve(b64_img, html)
+                    print(f"OmniSolver determined action: {solution.action}, target: {solution.target_text} - Reason: {solution.reasoning}")
+                    
+                    if solution.action == SolverAction.CLICK and solution.target_text:
+                        omni_js_bypass = f"""
+                        return (() => {{
+                            const elements = Array.from(document.querySelectorAll('button, a, span, div, img'));
+                            const targetText = "{solution.target_text}";
+                            // Find element exactly matching or containing the text
+                            const btn = elements.find(el => el.innerText && el.innerText.includes(targetText)) || 
+                                        elements.find(el => el.alt && el.alt.includes(targetText));
+                            if (btn) {{
+                                btn.click();
+                            }}
+                            return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
+                        }})();
+                        """
+                        result = await web_crawler.arun(
+                            url=url, 
+                            config=self.crawl_config, 
+                            headers=self._get_http_headers(), 
+                            js_code=omni_js_bypass,
+                            wait_for=".movie-box, .bigImage, .photo-info"
+                        )
+                        html = result.html or ""
+                        soup = BeautifulSoup(html, 'lxml')
+                        
+                        js_out = getattr(result, 'js_execution_result', None) or {}
+                        results_arr = js_out.get('results', [])
+                        if isinstance(results_arr, list) and results_arr:
+                            res = results_arr[0]
+                            if isinstance(res, dict):
+                                self.dynamic_cookie = res.get('cookie', self.dynamic_cookie)
+                                self.dynamic_user_agent = res.get('userAgent', self.dynamic_user_agent)
+                                
+                        if soup.select('.movie-box') or soup.select('.bigImage') or soup.select('.photo-info'):
+                            return soup
+                    elif solution.action == SolverAction.WAIT:
+                        print("OmniSolver suggests waiting for automatic verification...")
+                        await asyncio.sleep(5) 
+                    elif solution.action == SolverAction.SOLVED:
+                        print("OmniSolver detected page is already solved/ready.")
+                        return soup
+                except Exception as e:
+                    print(f"OmniSolver failed or not configured: {e}")
+
+            print(f"Age gate / CAPTCHA still present after attempt {attempt+1}, retrying...")
+            await asyncio.sleep(2)
 
         return BeautifulSoup(html, 'lxml')
 
@@ -800,7 +1048,10 @@ class Crawler:
                         break
             
             if needs_enrich:
-                llm_info = await self._enrich_actor_info_llm(primary_name, web_crawler)
+                from .lib.pipeline import AutonomousOrchestrator
+                orchestrator = AutonomousOrchestrator(self)
+                llm_info = await orchestrator.enrich_performer(primary_name, web_crawler)
+                
                 if llm_info:
                     key_mapping = {
                         "birthday": "生日",
@@ -826,6 +1077,11 @@ class Crawler:
                                     is_small_size = True
                             if ch_k not in info or not info[ch_k] or is_small_size:
                                 info[ch_k] = v
+                                
+                    # Capture additional metadata if available
+                    if "metadata" in llm_info and llm_info["metadata"]:
+                        if "metadata" not in info: info["metadata"] = {}
+                        info["metadata"].update(llm_info["metadata"])
 
         # Ensure name, url, avatar are at the top
         final_info = {"name": info.get("name", primary_name)}
@@ -846,77 +1102,6 @@ class Crawler:
             print(f"Saved profile for {actor_name} to {actor_file}")
         except Exception as e:
             print(f"Failed to save profile for {actor_name}: {e}")
-
-    async def _enrich_actor_info_llm(self, actor_name: str, web_crawler: AsyncWebCrawler) -> dict:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            print("GEMINI_API_KEY not found in environment, skipping LLM enrichment.")
-            return None
-            
-        print(f"Enriching profile for {actor_name} using LLM via Wikipedia...")
-        
-        # Helper to check URL validity quickly without spinning up full crawl
-        def find_valid_url(name_variants):
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            }
-            for name in name_variants:
-                url = f"https://ja.wikipedia.org/wiki/{quote_plus(name)}"
-                try:
-                    resp = requests.head(url, headers=headers, timeout=5)
-                    if resp.status_code == 200:
-                        return url
-                    elif resp.status_code == 405:
-                        # Some servers block HEAD, try GET
-                        resp = requests.get(url, headers=headers, timeout=5)
-                        if resp.status_code == 200:
-                            return url
-                except Exception as e:
-                    pass
-            return None
-            
-        names_to_try = [actor_name, f"{actor_name} (AV女優)", f"{actor_name} (女優)"]
-        if "（" in actor_name and "）" in actor_name:
-            match = re.search(r'(.+?)（(.+?)）', actor_name)
-            if match:
-                names_to_try.extend([match.group(1), match.group(2)])
-        elif "(" in actor_name and ")" in actor_name:
-            match = re.search(r'(.+?)\((.+?)\)', actor_name)
-            if match:
-                names_to_try.extend([match.group(1), match.group(2)])
-                
-        valid_url = await asyncio.to_thread(find_valid_url, names_to_try)
-        if not valid_url:
-            print(f"No valid Wikipedia page found for {actor_name}.")
-            return None
-            
-        instruction = "Extract the actress profile information from the Wikipedia page. Only use metric measurements (cm) for height and sizes, ignoring any imperial (inches) tables."
-        try:
-            from crawl4ai import LLMConfig
-            strategy = LLMExtractionStrategy(
-                llm_config=LLMConfig(provider="gemini/gemini-2.5-flash", api_token=api_key),
-                instruction=instruction,
-                schema=ActressProfileSchema.model_json_schema(),
-                extraction_type="schema",
-                force_json_response=True
-            )
-            config = CrawlerRunConfig(extraction_strategy=strategy)
-            result = await web_crawler.arun(url=valid_url, config=config)
-            
-            if result.extracted_content:
-                try:
-                    data = json.loads(result.extracted_content)
-                    if isinstance(data, list) and len(data) > 0:
-                        return data[0]
-                    elif isinstance(data, dict):
-                        return data
-                except json.JSONDecodeError:
-                    print("Failed to parse LLM JSON response.")
-        except Exception as e:
-            print(f"LLM extraction failed: {e}")
-            
-        return None
 
     async def _scan_star_pages(self, star_url: str, actor_name: str, web_crawler: AsyncWebCrawler):
         print(f"\n--- Scanning full list for actor: {actor_name} ---")
@@ -1767,6 +1952,7 @@ async def main():
     parser.add_argument("--package", type=str, help="Create a release zip with the given version")
     parser.add_argument("--native-fetch", action="store_true", help="Use lightweight native HTTP/BS4 instead of headless browser")
     parser.add_argument("--llm-enrich", action="store_true", help="Use LLM to enrich missing actor profile data via Wikipedia")
+    parser.add_argument("--profile-site", help="URL of a new site to onboard autonomously")
     parser.add_argument("--magnet-max-age", type=int, default=crawler_defaults.get("magnet_max_age_days", 365), 
                         help="Maximum age of magnets in days")
 
@@ -1786,6 +1972,7 @@ async def main():
     config.user_data_dir = args.user_data_dir
     config.dry_run = args.dry_run
     config.discover = args.discover
+    config.profile_site = args.profile_site
     config.collection_scan = args.collection_scan
     config.discover_start_page = args.start_page
     config.discover_pages = args.pages
@@ -1805,6 +1992,15 @@ async def main():
     c = Crawler(config)
 
     # Standalone utilities
+    if args.profile_site:
+        from .lib.pipeline import AutonomousOrchestrator
+        orchestrator = AutonomousOrchestrator(c)
+        from crawl4ai import AsyncWebCrawler, BrowserConfig
+        browser_conf = BrowserConfig(headless=True, user_data_dir=config.user_data_dir)
+        async with AsyncWebCrawler(config=browser_conf) as web_crawler:
+            await orchestrator.profile_site(args.profile_site, web_crawler)
+        return
+
     if args.rebuild_list:
         await c.rebuild_list(args.rebuild_list)
         return

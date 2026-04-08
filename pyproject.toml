@@ -17,6 +17,8 @@ dependencies = [
     "browser_cookie3",
     "tenacity",
     "aiohttp-client-cache[sqlite]",
+    "google-genai",
+    "pydantic"
 ]
 
 [project.scripts]
