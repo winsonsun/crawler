@@ -11,6 +11,7 @@ This skill facilitates the "Reactionary Evolution" of the codebase. Instead of a
 1. **Analyze the Scar:** Read the most recent entries in `FOSSIL_RECORD.md`. Identify the "Physics" and "Constraint" that must be overcome.
     - **Cross-Site Intelligence:** Check if a similar scar exists for other sites. Prioritize "Transferable Physics" solutions (e.g., sharing common checkbox-bypass logic).
 2. **Consult Schema Forest & Identify Target:** Read `SCHEMA_DEPENDENCY_FOREST.md`. Identify which Data Node or Operator is failing. Locate the specific method, class, or logic in the codebase (e.g., `crawler.py`) that corresponds to it. Use the Forest to map the "blast radius" (downstream dependents) of your proposed fix.
+    - **The Blast Radius Check:** Before simulating a reaction to a scar, you must identify the ultimate business value of the data being extracted. If you change a CSS selector for a date, you must ask: "Who consumes this date?" If the answer is unknown, your architecture is deficient. You must halt the simulation and establish a mapping of all data dependencies (e.g., a Schema Forest) to ensure your reaction does not cause a fatal downstream mutation.
 3. **Draft the Mutation:** Adopt the "Pragmatic Architect" persona. Generate a Python "Fix Script" that surgically mutates the code.
     - **Rule 1:** Prefer `re.sub` for precise method replacement.
     - **Rule 2:** Maintain the "Body" of the code; only change what is required for survival.

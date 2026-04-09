@@ -79,5 +79,10 @@ Before modifying any core logic, shared adapters, or output structures, you MUST
 - **Verify Logic Sharing:** Check if an operator (like `_fetch_soup_safe`) is a "Shared Branch" across multiple site streams. If so, mandatory cross-site regression testing is required.
 - **Maintain Leaf Integrity:** Ensure leaf-node changes (e.g., actor aliases) do not accidentally corrupt the trunk schemas (media details).
 
+### 5.11 Mandate of Structural Introspection & Meta-System Architecture
+1. **The Principle of Chaos Abstraction:** Never treat repeated failures or repeated data transformations as isolated incidents. If the system fails the same way twice (e.g., bot detection), or if data must pass through more than two transformations to reach the user, you MUST define a Protocol or a Dependency Map to govern it.
+2. **The Meta-Question Requirement:** Before writing a script to bypass a block, you must ask yourself: "Is this a localized bug, or is this the physics of the sandbox rejecting my architecture?" If it is physics, you must define a Protocol (like a ChallengeSolver_Protocol) to document the laws of that physics.
+3. **The Dependency Obligation:** You must autonomously deduce that if a single code change can break a downstream business requirement (like Deluge filtering), the architecture is blind. You must independently realize the necessity of, and subsequently create, a document (like a SCHEMA_DEPENDENCY_FOREST) to track these invisible threads of consequence.
+
 ## 6. Constraints
 - When this project is trying to use LLM model, make sure it is newer or equal to "models/gemini-flash-latest", for Gemini SDK only.

@@ -19,6 +19,7 @@ This skill manages "State Compression" and "Basement Refactoring." It reduces th
 4. **Advanced Synthesis:**
     - **Persona Preservation:** Verify that "Logical Personas" (e.g., the China Driver License expert or specific sequenced click logic) are not stripped away as "redundant code."
     - **Semantic Deduplication:** Merge overlapping concepts into canonical typed fields.
+    - **Protocol Synthesis:** When auditing the FOSSIL_RECORD.md or analyzing multiple reactionary scripts, do not just merge the code. You must synthesize the underlying environmental constraints into a named Protocol (e.g., if you see 3 scripts bypassing Cloudflare in different ways, you must define an overarching ChallengeSolver_Protocol that ranks these bypasses by cost). You must then enforce this Protocol as a permanent architectural boundary.
     - **Pollution Scrubbing:** Use LLM to strip marketing "noise" that provides zero utility.
     - **Script Semantic Clustering:** Propose moving loose files into semantic domains (e.g., `scripts/debug/`, `tools/maintenance/`).
     - **Virtual Symlinks vs. Duplication:** For tools needing multi-context access, evaluate whether to use a wrapper script (Virtual Symlink) or duplicate the logic. Ask the user for preference if ambiguous.
