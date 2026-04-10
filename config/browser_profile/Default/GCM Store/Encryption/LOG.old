@@ -1,2 +1,3 @@
-2026/04/08-20:25:48.547 2fea878 Creating DB /Users/winsonsun/workspace/projects/sceneLib/lib/crawler/config/browser_profile/Default/GCM Store/Encryption since it was missing.
-2026/04/08-20:25:48.557 2fea878 Reusing MANIFEST /Users/winsonsun/workspace/projects/sceneLib/lib/crawler/config/browser_profile/Default/GCM Store/Encryption/MANIFEST-000001
+2026/04/09-19:27:17.877 3047197 Reusing MANIFEST /Users/winsonsun/workspace/projects/sceneLib/lib/crawler/config/browser_profile/Default/GCM Store/Encryption/MANIFEST-000001
+2026/04/09-19:27:17.877 3047197 Recovering log #3
+2026/04/09-19:27:17.877 3047197 Reusing old log /Users/winsonsun/workspace/projects/sceneLib/lib/crawler/config/browser_profile/Default/GCM Store/Encryption/000003.log 

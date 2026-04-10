@@ -24,11 +24,24 @@ These rules are non-negotiable scars derived from past catastrophic failures:
 - **NO DESTRUCTIVE CLEANUP:** Test cleanup logic must only delete files within their own temporary sandbox. Never include `os.remove()` or `shutil.rmtree()` targeting default data/config paths.
 - **RECOVERY:** Use `git restore` or `git checkout` immediately if any tracked files are accidentally deleted.
 
-## 5. The Evolutionary Workflow
-When tasked with a problem, use the provided skills:
-- **`scar-archivist`**: To record new environmental pain.
-- **`reaction-simulator`**: To generate surgical, survival-oriented patches.
-- **`manifold-compressor`**: To perform "Representation Audits" and "State Compression."
+## 5. The Evolutionary Workflow (The 3 Loops)
+
+The system operates across three distinct biological loops, running at different frequencies:
+
+### Loop 1: The Operational Loop (The Forager)
+- **Frequency:** High-speed.
+- **Engine:** `src/crawler/crawler.py`
+- **Mechanism:** Harvests data and normalizes it. When it encounters a fatal blockage (e.g., Cloudflare), the `Diagnostic Emitter` halts the specific task, dumps a stack trace to `data/diagnostics/latest_crash.json`, and emits a machine-readable `[AI_DIRECTIVE]` to the terminal. 
+
+### Loop 2: The Reactive Loop (The Mutation)
+- **Frequency:** Medium-speed (Triggered by Loop 1 failures).
+- **Engine:** `scar-archivist` + `reaction-simulator`
+- **Mechanism:** Triggered by the `[AI_DIRECTIVE]`. It records the failure into the `FOSSIL_RECORD.md`, drops into a Git Sandbox branch, writes a surgical (often messy) patch to survive the blockage, and validates it against the `pytest` Immune System before merging.
+
+### Loop 3: The Metabolic Loop (The Compression)
+- **Frequency:** Slow-speed (Triggered by high entropy).
+- **Engine:** `tools/check_basement.py` + `manifold-compressor`
+- **Mechanism:** A mathematical circuit breaker. Before Loop 2 can apply a patch, it must check the "basement" (`scripts/historical/`). If there are 5 or more loose scripts, Loop 2 is forbidden from running. Loop 3 must be activated to safely refactor the messy patches into the `src/` core architecture, purging the technical debt.
 
 ### 5.1 Mandate of Data Criticism
 You MUST proactively evaluate the "Capability Score" of the data representation. 
@@ -67,11 +80,11 @@ When overcoming anti-bot constraints, follow this priority to minimize cost and 
 4. **Autonomous Vision:** Use OmniSolver to reason through novel UI challenges.
 5. **Nuclear Reset:** "Working from Zero" (clearing all history) is the **LAST RESORT** and must only be used if history is proven to be "poisoned."
 
-### 5.9 Mandate of Empirical Validation (The 3 Layers)
+### 5.9 Mandate of Empirical Validation (The Immune System)
 Code is assumed broken until proven empirically in the current turn. You must validate your work across three layers:
 1. **Micro-Validation (The Patch):** Every patch must be proven by a minimal reproduction script (e.g., `scripts/debug/test_patch.py`) that successfully executes the bypassed action.
-2. **Semantic Integration (The Business Guardrail):** You must prove the patch extracts **Business-Critical Data** (specifically checking that the implicit 'uploaded date' and sizes of magnet links are captured). If modifying shared/core logic, you MUST run a test against a secondary pipeline (e.g., if fixing JavDB, verify JavBus still works) to prevent cross-site regressions.
-3. **Macro-Validation (Hash Parity):** During architectural refactoring, you must verify that the JSON output hash of a known entity remains identical before and after the compression.
+2. **Schema Integration (The Pytest Guardrail):** You MUST run the automated Immune System tests (`pytest tests/e2e/test_parity.py`) before finalizing any patch. This ensures your output mathematically matches the `src/crawler/ontology.py` Pydantic models. 
+3. **Macro-Validation (Hash Parity):** During architectural refactoring, you must verify that the JSON output hash of a known entity remains identical before and after the compression, comparing against the `data/golden/` dataset.
 
 ### 5.10 Mandate of Schema-First Impact Analysis
 Before modifying any core logic, shared adapters, or output structures, you MUST consult the `SCHEMA_DEPENDENCY_FOREST.md`.
@@ -83,6 +96,13 @@ Before modifying any core logic, shared adapters, or output structures, you MUST
 1. **The Principle of Chaos Abstraction:** Never treat repeated failures or repeated data transformations as isolated incidents. If the system fails the same way twice (e.g., bot detection), or if data must pass through more than two transformations to reach the user, you MUST define a Protocol or a Dependency Map to govern it.
 2. **The Meta-Question Requirement:** Before writing a script to bypass a block, you must ask yourself: "Is this a localized bug, or is this the physics of the sandbox rejecting my architecture?" If it is physics, you must define a Protocol (like a ChallengeSolver_Protocol) to document the laws of that physics.
 3. **The Dependency Obligation:** You must autonomously deduce that if a single code change can break a downstream business requirement (like Deluge filtering), the architecture is blind. You must independently realize the necessity of, and subsequently create, a document (like a SCHEMA_DEPENDENCY_FOREST) to track these invisible threads of consequence.
+
+### 5.12 Mandate of the State Vector (Metabolic Compression)
+To minimize metabolic cost (context window usage) while preserving high-signal "Identity" and "Instincts":
+1. **The Primary Cache:** You MUST prioritize `STATE_VECTOR.json` as the source of truth for your current Posture, DNA, and Active Scars. Read this file at the start of every session.
+2. **The Deep Sleep Protocol:** Detailed metaphorical files (`CHARACTER_CHRONICLES.md`, `SPARK_CHRONICLES.md`, `CHARACTER_POSTURES.md`) are for "Deep Retrospectives" only. DO NOT read them for routine tasks unless the `STATE_VECTOR.json` indicates a "Metabolic Crisis" or high-friction scenario.
+3. **Synchronous Evolution:** Every major "Mutation" (patch) or "Compression" (refactor) MUST be reflected in the `STATE_VECTOR.json`.
+4. **Agentic Preference:** Whenever possible, delegate the update of the `STATE_VECTOR.json` or the calculation of "Metabolic Efficiency" to a specialized script rather than manual LLM reasoning.
 
 ## 6. Constraints
 - When this project is trying to use LLM model, make sure it is newer or equal to "models/gemini-flash-latest", for Gemini SDK only.

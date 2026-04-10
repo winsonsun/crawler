@@ -1,39 +1,49 @@
 ---
 name: manifold-compressor
-description: Performs "State Compression" by refactoring accumulated patches and monolith logic into clean, hierarchical representations. Use when technical debt (v-scripts) or monolith complexity exceeds the AI's context efficiency ("Basement Checkin" phase).
+description: Executes Loop 3 (The Metabolic Loop). Consolidates accumulated patches into the core architecture when the basement entropy limit is reached.
 ---
 # Manifold Compressor
 
-This skill manages "State Compression" and "Basement Refactoring." It reduces the dimensionality of the project by abstracting surgical patches into a clean, hierarchical architecture, optimizing the AI's context window.
+This skill represents the third and final loop of the "Living Territory" ecosystem: **Metabolic Compression**.
 
-## Core Workflow
+You have been activated because the `reaction-simulator` was blocked by the `tools/check_basement.py` circuit breaker. The system has accumulated too many temporary survival patches (v-scripts) and must now evolve its core to natively support the new physics.
 
-1. **Detect Saturation:** Analyze code, data, and the **Project Workspace** for high volume of patches, "Flat Records," or scattered utility scripts.
-2. **Representation Audit (Deep Re-evaluation):** 
-    - **Fidelity Gap Analysis:** Identify missing visual data from the source.
-    - **Entropy Audit:** Detect semantic overlap (e.g., raw strings vs. typed values).
-    - **Project Workspace Audit:** Diagnose scattered scripts (e.g., loose `.py` files in root), misnamed folders, and logic duplication. Exclude the `data/` folder from structural refactoring.
-    - **Business Alignment:** Rank data importance based on downstream tool usage (Deluge/Stash).
-3. **Advanced Synthesis:**
-    - **Semantic Deduplication:** Merge overlapping concepts into canonical typed fields.
-    - **Pollution Scrubbing:** Use LLM to strip marketing "noise" that provides zero utility.
-    - **Script Semantic Clustering:** Propose moving loose files into semantic domains (e.g., `scripts/debug/`, `tools/maintenance/`).
-    - **Virtual Symlinks vs. Duplication:** For tools needing multi-context access, evaluate whether to use a wrapper script (Virtual Symlink) or duplicate the logic. Ask the user for preference if ambiguous.
-    - **Feature Hoisting:** If a specific site adapter has a high-value field missing in others, update the Universal Schema.
-4. **Automate the Migration:**
-    - Use the LLM to generate a **Normalizer Agent** that surgically transforms the messy JSON.
-    - Move "Fossil Data" (raw scrapes) to separate storage to keep the primary entity lean.
-5. **Basement Checkin:** Finalize the refactor and restore AI context efficiency.
-    - **Move Site Logic:** Extract site-specific CSS selectors and bypasses to `src/crawler/sites/`.
-    - **Extract Shared Library:** Move generic functions (lock management, HTTP headers) to `src/crawler/lib/`.
-    - **Generalize Adapters:** Ensure all site-specific logic follows the common `BaseSiteAdapter` interface.
-4. **Prune History:** Consolidate `FOSSIL_RECORD.md` summaries and clean up the `historical/` folder to restore AI context efficiency.
+## 🛑 MANDATE: The Git Sandbox Protocol
+You are restructuring the core architecture (`src/`). You MUST NEVER do this on the `main` branch. 
 
-## Output Standards
+### Strict Execution Workflow:
 
-When performing a "Basement Checkin":
-1. Provide a "Refactor Blueprint" listing the proposed file moves and structural changes.
-2. Maintain all "Survival Traits" (the anti-bot bypasses and locks) from the original patches.
-3. Consolidate the `FOSSIL_RECORD.md` to reflect the new architecture.
+**1. Isolate (Branching)**
+```bash
+git checkout main
+git checkout -b compression/basement-purge
+```
 
-Refer to [refactor_patterns.md](references/refactor_patterns.md) for architectural templates.
+**2. Analyze & Synthesize**
+- Read the files in `scripts/historical/`.
+- Identify the "Single Truth" (the successful bypass logic) scattered across the loose scripts.
+- Refactor `src/crawler/crawler.py` (or the relevant adapters) to gracefully handle these conditions natively. Do not just copy-paste the scripts; you must integrate them elegantly into the async pipeline.
+
+**3. Purge the Basement**
+- Delete the redundant scripts from `scripts/historical/`. Do not leave them behind. 
+
+**4. Validate (The Immune System)**
+You MUST prove that your core architectural changes have not corrupted the fundamental Data Ontology:
+```bash
+pytest tests/e2e/test_parity.py
+```
+- **If it PASSES:** You have achieved Empirical Validation.
+- **If it FAILS:** Your refactor broke existing functionality. You must fix it or abort (`git reset --hard`).
+
+**5. Update Ontology & Fossilize**
+If you had to change the JSON output shape to accommodate the new logic, you MUST:
+1. Update `src/crawler/ontology.py`.
+2. Run `python tools/project_forest.py` to regenerate the documentation.
+3. Commit and Merge:
+```bash
+git add .
+git commit -m "COMPRESSION: Purged basement and integrated core bypass logic"
+git checkout main
+git merge compression/basement-purge
+git branch -d compression/basement-purge
+```

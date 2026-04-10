@@ -5,20 +5,21 @@ import asyncio
 import re
 from typing import Optional
 from .ontology import UniversalMediaDetail
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 class MediaRefiner:
     def __init__(self):
-        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
+            self.model_name = 'models/gemini-2.5-flash'
         else:
-            self.model = None
+            self.client = None
 
     async def refine(self, detail: UniversalMediaDetail) -> UniversalMediaDetail:
         """Uses LLM to polish and refine the media entity metadata."""
-        if not self.model:
+        if not self.client:
             print("Warning: No API key found for Refiner. Skipping LLM refinement.")
             detail.clean_title = detail.title
             return detail
@@ -36,30 +37,30 @@ class MediaRefiner:
         2. Verify Performers: If the title mentions a name not in the performers list, add it.
         3. Identify Primary Name: If multiple names are present for an actor, identify the most common one.
 
-        Respond ONLY in JSON format:
-        {{
-            "clean_title": "string",
-            "performers": [
-                {{"name": "string", "primary_name": "string"}}
-            ]
-        }}
-
+        Respond ONLY in JSON format.
         """
 
         try:
             # Set safety settings to allow processing of adult content metadata
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            ]
-            response = await asyncio.to_thread(self.model.generate_content, prompt, safety_settings=safety_settings)
-            text = response.text
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                safety_settings=[
+                    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                ],
+                temperature=0.1
+            )
             
-            refined_data = json.loads(text.strip())
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                model=self.model_name,
+                contents=prompt,
+                config=config
+            )
+            
+            refined_data = json.loads(response.text.strip())
             detail.clean_title = refined_data.get("clean_title", detail.title)
             
             refined_performers = refined_data.get("performers", [])

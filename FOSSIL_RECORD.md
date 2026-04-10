@@ -36,3 +36,8 @@ A ledger of environmental constraints, failures, and the physical rules of the s
 - **Trigger:** Refactoring of OmniSolver and discovery loop.
 - **Physics:** The 'China Driver License' expert persona and sequenced click logic were lost during architectural compression, leading to infinite 'Confirm' loops on JavBus.
 - **Constraint:** Always preserve the 'Logical Question' persona in OmniSolver and ensure discovery loops handle stateful checkboxes with delays.
+
+## Scar: 2026-04-09 Test Validation Mechanism
+- **Trigger:** Implementing Immune System
+- **Physics:** LLMs hallucinate success in terminal outputs.
+- **Constraint:** Must use automated Pytest assertions against Golden Data.

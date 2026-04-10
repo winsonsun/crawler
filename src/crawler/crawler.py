@@ -356,6 +356,43 @@ class Crawler:
                 print(f"[_fetch_soup_safe] No screenshot available for OmniSolver at step {step}")
                 break
                 
+            # Quick check if solved already by some background redirect
+            if any(x in (result.html or "") for x in ["/v/", "movie-box", "item", "movie-list"]):
+                return BeautifulSoup(result.html or "", 'lxml')
+
+            # Human behavior simulation: Slow mouse movement toward center
+            mouse_js = """
+            return (async () => {
+                const sleep = ms => new Promise(r => setTimeout(r, ms));
+                const moveMouse = async (x1, y1, x2, y2) => {
+                    const steps = 20;
+                    for (let i = 0; i <= steps; i++) {
+                        const x = x1 + (x2 - x1) * (i / steps) + Math.sin(i / 2) * 5;
+                        const y = y1 + (y2 - y1) * (i / steps) + Math.cos(i / 2) * 5;
+                        const el = document.elementFromPoint(x, y);
+                        if (el) {
+                            const ev = new MouseEvent('mousemove', {
+                                view: window,
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: x,
+                                clientY: y
+                            });
+                            el.dispatchEvent(ev);
+                        }
+                        await sleep(50); // ~20 steps * 50ms = 1s for ~100px move
+                    }
+                };
+                const startX = Math.random() * window.innerWidth;
+                const startY = Math.random() * window.innerHeight;
+                const endX = window.innerWidth / 2 + (Math.random() - 0.5) * 100;
+                const endY = window.innerHeight / 2 + (Math.random() - 0.5) * 100;
+                await moveMouse(startX, startY, endX, endY);
+                return true;
+            })();
+            """
+            await web_crawler.arun(url=result.url, config=self.crawl_config, headers=self._get_http_headers(), js_code=mouse_js)
+
             solution = solver.solve(b64_img, result.html or "")
             print(f"[_fetch_soup_safe] OmniSolver Step {step+1}: Action={solution.action}, Reasoning={solution.reasoning}")
             
@@ -363,11 +400,17 @@ class Crawler:
                 return BeautifulSoup(result.html or "", 'lxml')
             
             if solution.action == SolverAction.WAIT:
-                await asyncio.sleep(5)
+                wait_time = 5
+                if "security verification" in (solution.reasoning or "").lower():
+                    wait_time = 10 
+                
+                await asyncio.sleep(wait_time)
                 result = await web_crawler.arun(url=result.url, config=self.crawl_config, headers=self._get_http_headers())
             
             elif solution.action == SolverAction.CLICK:
                 target = solution.target_selector or solution.target_text
+                is_turnstile = any(x in (target or "").lower() for x in ["human", "verify", "robot", "checkbox"])
+                
                 omni_js = f"""
                 return (async () => {{
                     const selector = "{solution.target_selector or ""}";
@@ -378,16 +421,25 @@ class Crawler:
                         const elements = Array.from(document.querySelectorAll('button, a, span, div, img, input[type="button"], input[type="submit"]'));
                         btn = elements.find(el => (el.innerText && el.innerText.includes(text)) || (el.alt && el.alt.includes(text)) || (el.value && el.value.includes(text)));
                     }}
+                    
                     if (btn) {{
-                        // Handle stateful checkbox if needed
+                        console.log("OmniSolver: Clicking target found by selector/text");
                         const ageCheck = document.querySelector('input[type="checkbox"]');
                         if (ageCheck && !ageCheck.checked) {{
                             ageCheck.click();
-                            await new Promise(r => setTimeout(r, 1000)); // Delay for state
+                            await new Promise(r => setTimeout(r, 1000));
                         }}
                         btn.click();
+                    }} else if ({str(is_turnstile).lower()}) {{
+                        console.log("OmniSolver: Turnstile target not found via standard selectors. Falling back to center-click.");
+                        // Fallback: click roughly where Turnstile widget usually appears (center-ish)
+                        const x = window.innerWidth / 2;
+                        const y = window.innerHeight / 2;
+                        const el = document.elementFromPoint(x, y);
+                        if (el) el.click();
                     }}
-                    await new Promise(r => setTimeout(r, 3000));
+                    
+                    await new Promise(r => setTimeout(r, 5000));
                     return {{ cookie: document.cookie, userAgent: navigator.userAgent }};
                 }})();
                 """
@@ -402,7 +454,12 @@ class Crawler:
                 print(f"[_fetch_soup_safe] OmniSolver failed or returned unknown action: {solution.action}")
                 break
 
-        return BeautifulSoup(result.html or "", 'lxml')
+        html = result.html or ""
+        if any(x in html for x in ["Just a moment...", "Challenge", "reCAPTCHA", "security verification", "Verify you are human"]):
+            from .diagnostic_emitter import emit_fatal_scar
+            emit_fatal_scar(f"Fetching {url}", Exception("All 3 bypass paths failed. Stuck at anti-bot barrier."), html)
+
+        return BeautifulSoup(html, 'lxml')
 
     def _update_cookies_from_result(self, result):
         """Updates dynamic cookies and persists them if they contain clearance tokens."""
@@ -752,6 +809,8 @@ class Crawler:
                                     })
                             if magnets: return magnets
                 except Exception as e:
+                    from .diagnostic_emitter import emit_fatal_scar
+                    emit_fatal_scar(f"JavBus Magnet AJAX {endpoint}", e)
                     print(f"Failed to fetch javbus magnets from {endpoint}: {e}")
         return []
 
@@ -1155,34 +1214,60 @@ class Crawler:
                 print(f"Error loading ain list: {e}")
                 
         prefixes = self.config.discover_prefixes
-        base_url = SITES_CONFIG.get(self.config.site, {}).get('home_url', 'https://www.javbus.com')
+        base_url = SITES_CONFIG.get(self.config.site, {}).get('home_url', 'https://www.javbus.com').rstrip('/')
         
         start_p = self.config.discover_start_page
         for page in range(start_p, start_p + self.config.discover_pages):
-            url = f"{base_url}/page/{page}" if page > 1 else f"{base_url}/"
+            if self.config.site == "javbus":
+                url = f"{base_url}/page/{page}" if page > 1 else f"{base_url}/"
+            else:
+                url = f"{base_url}/?page={page}" if page > 1 else f"{base_url}/"
             
             print(f"Discovering page {page}: {url}")
             soup = await self._fetch_soup_safe(url, web_crawler)
             
             items = []
-            for box in soup.select('.movie-box'):
-                date_tags = box.select('date')
-                scene_id = date_tags[0].text.strip() if date_tags else ""
-                span_tag = box.select_one('.photo-info span')
-                title = span_tag.text.strip() if span_tag else ""
-                
-                if title:
-                    title = title.split('\\n')[0].strip()
-
-                page_url = box.get('href', '')
-                if page_url and not page_url.startswith('http'):
-                    page_url = base_url + page_url
+            if self.config.site == "javbus":
+                for box in soup.select('.movie-box'):
+                    date_tags = box.select('date')
+                    scene_id = date_tags[0].text.strip() if date_tags else ""
+                    span_tag = box.select_one('.photo-info span')
+                    title = span_tag.text.strip() if span_tag else ""
                     
-                items.append({
-                    'id': scene_id,
-                    'title': title,
-                    'page_url': page_url
-                })
+                    if title:
+                        title = title.split('\n')[0].strip()
+
+                    page_url = box.get('href', '')
+                    if page_url and not page_url.startswith('http'):
+                        page_url = base_url + page_url
+                        
+                    items.append({
+                        'id': scene_id,
+                        'title': title,
+                        'page_url': page_url
+                    })
+            elif self.config.site == "javdb":
+                for item in soup.select('.item'):
+                    box = item.select_one('a.box')
+                    if not box: continue
+                    
+                    title_div = box.select_one('.video-title')
+                    full_title = title_div.text.strip() if title_div else ""
+                    
+                    # JavDB usually puts ID first in the title
+                    parts = full_title.split(' ', 1)
+                    scene_id = parts[0] if parts else ""
+                    title = parts[1] if len(parts) > 1 else full_title
+                    
+                    page_url = box.get('href', '')
+                    if page_url and not page_url.startswith('http'):
+                        page_url = base_url + page_url
+                        
+                    items.append({
+                        'id': scene_id,
+                        'title': title,
+                        'page_url': page_url
+                    })
             
             for item in items:
                 scene_id = item.get('id')
@@ -1883,6 +1968,8 @@ class Crawler:
                                 delay = random.uniform(self.config.min_delay, self.config.max_delay)
                                 await asyncio.sleep(delay)
                         except Exception as e:
+                            from .diagnostic_emitter import emit_fatal_scar
+                            emit_fatal_scar(f"Processing scene '{scene_name}'", e)
                             print(f"Failed to process scene '{scene_name}': {e}", file=sys.stderr)
                 
                 tasks = [process_with_semaphore(i, sc) for i, sc in enumerate(self.config.scenes)]

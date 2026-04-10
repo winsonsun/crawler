@@ -1,26 +1,54 @@
 ---
 name: reaction-simulator
-description: Simulates "Reactionary Evolution" by generating surgical patches to overcome environmental constraints. Use when a new Scar is recorded in FOSSIL_RECORD.md and the codebase must adapt to survive.
+description: Simulates "Reactionary Evolution" by generating surgical patches to overcome environmental constraints. Enforces the Git Sandbox Protocol. Use when a new Scar is recorded and the codebase must adapt to survive.
 ---
 # Reaction Simulator
 
-This skill facilitates the "Reactionary Evolution" of the codebase. Instead of a top-down refactor, it generates surgical, minimal "Fix Scripts" (Python using `re.sub`) to mutate the code to survive new environmental constraints ("Scars").
+This skill facilitates the "Reactionary Evolution" of the codebase. You are tasked with generating surgical patches to overcome new environmental constraints ("Scars").
 
-## Core Workflow
+## 🛑 NEW MANDATE: The Git Sandbox Protocol
+You MUST NEVER apply mutations or patches directly to the `main` branch. LLM hallucinations are a severe risk to the Trunk. You must isolate your experiments.
 
-1. **Analyze the Scar:** Read the most recent entries in `FOSSIL_RECORD.md`. Identify the "Physics" and "Constraint" that must be overcome.
-2. **Identify the Target:** Locate the specific method, class, or logic in the codebase (e.g., `crawler.py`) that is failing.
-3. **Draft the Mutation:** Adopt the "Pragmatic Architect" persona. Generate a Python "Fix Script" that surgically mutates the code.
-    - **Rule 1:** Prefer `re.sub` for precise method replacement.
-    - **Rule 2:** Maintain the "Body" of the code; only change what is required for survival.
-    - **Rule 3:** The patch should be self-executing (read the file, apply regex, write the file).
-4. **Validation:** Review the patch to ensure it addresses the Scar while maintaining the minimal delta.
+### Strict Execution Workflow:
 
-## Output Standards
+**0. Metabolic Check (The Circuit Breaker)**
+Before you do anything, you MUST verify that the system has enough metabolic headroom to absorb another patch:
+```bash
+python tools/check_basement.py
+```
+- **If it exits with 1 (FATAL):** You MUST abort this skill immediately and activate `manifold-compressor` instead.
+- **If it exits with 0 (OK):** Proceed to Step 1.
 
-When the user asks to "React" to a scar:
-1. Provide a brief explanation of how the patch overcomes the constraint.
-2. Output the full content of the Python "Fix Script."
-3. Instruct the user on how to run it.
+**1. Isolate (Branching)**
+Before writing *any* code or applying *any* patch, you must execute:
+```bash
+git checkout main
+git checkout -b mutation/fix-<slugified_scar_name>
+```
 
-Refer to [patch_examples.md](references/patch_examples.md) for common mutation patterns.
+**2. Mutate (The Surgical Patch)**
+- Analyze the `STATE_VECTOR.json` and the corresponding Scar in `FOSSIL_RECORD.md`.
+- Locate the failing logic in `src/crawler/`.
+- Apply your surgical patch using the `replace` or `write_file` tools. Prioritize modifying existing adapters over creating new loose scripts in `scripts/historical/`.
+
+**3. Validate (The Immune System)**
+You MUST run the automated test suite to ensure your patch did not corrupt the Data Ontology:
+```bash
+pytest tests/e2e/test_parity.py
+```
+- **If it PASSES:** You have achieved Empirical Validation. Proceed to Step 4.
+- **If it FAILS:** Your mutation is lethal. You must read the Pytest error, adjust your code, and test again. If you cannot fix it after 3 attempts, you MUST abort: `git reset --hard && git checkout main`.
+
+**4. Fossilize (Merge)**
+Once validation passes, integrate the mutation into the main evolutionary line:
+```bash
+git add .
+git commit -m "EVOLUTION: <brief description of the bypass/fix>"
+git checkout main
+git merge mutation/fix-<slugified_scar_name>
+git branch -d mutation/fix-<slugified_scar_name>
+```
+
+## Identity Alignment
+- Adopt the **"Pragmatic Architect"** persona from the `STATE_VECTOR.json`. 
+- Ensure your patch respects the "Metabolic Efficiency" constraint (e.g., don't use heavy LLM Vision solvers if a simple cookie injection will suffice).

@@ -1,27 +1,26 @@
----
-name: scar-archivist
-description: Detects and records environmental failures, anti-bot measures, and data corruption events into a FOSSIL_RECORD.md file. Use when a script fails, a site changes, or a new constraint is discovered.
----
-# Scar Archivist
+# Scar Archivist Skill
 
-This skill operationalizes the "Living Territory" philosophy by recording environmental constraints and failures ("Scars") into a persistent `FOSSIL_RECORD.md` file. It stops treating errors as "bugs to be fixed" and treats them as "Physics rules of the sandbox."
+## Overview
+The Scar Archivist is responsible for recording environmental failures, anti-bot measures, and data corruption events into the system's memory.
 
-## Core Workflow
+## 🛑 NEW MANDATE: Do not write Markdown manually.
+You MUST NOT manually edit `FOSSIL_RECORD.md` or `STATE_VECTOR.json`. Manual edits cause formatting errors and metabolic drain.
 
-1. **Analyze the Failure:** Review the user's provided error, stack trace, or description of the failure.
-2. **Abstract the Physics:** Determine the underlying environmental rule that caused the failure (e.g., "JavBus implemented a new Turnstile CAPTCHA").
-3. **Determine the Constraint:** Identify the boundary this places on the architecture (e.g., "Requests library is obsolete here; must use a headed browser or inject pre-solved cookies").
-4. **Record the Scar:** Use the bundled `scripts/record_scar.py` to append the abstracted scar to the workspace's `FOSSIL_RECORD.md`.
+## Execution Instructions
+When a new failure is encountered, you MUST run the `record_scar.py` tool.
 
-## Output Standards
-
-When analyzing a failure, do not immediately write code to fix it. Your job is to document the constraint first.
-
-Reference the standard format for a scar in [scar_format.md](references/scar_format.md).
-
-## Usage
-
-To record a scar:
+### Command Syntax:
 ```bash
-python scripts/record_scar.py "[Brief Title]" "[What action caused the failure]" "[The underlying environmental rule]" "[The boundary this places on the architecture]"
+python tools/record_scar.py \
+  --title "Brief name of the issue (e.g., JavDB Cloudflare Block)" \
+  --trigger "The action that caused the failure (e.g., Requesting /v/ endpoint)" \
+  --physics "The underlying site rule (e.g., Turnstile requires JS execution)" \
+  --constraint "The architectural fix required (e.g., Must use OmniSolver or headful profile)"
 ```
+
+### Post-Execution
+The script will automatically:
+1. Format and append the entry to `FOSSIL_RECORD.md`.
+2. Slugify the title and add it to the `current_scars` array in `STATE_VECTOR.json`.
+
+After running the command, transition immediately to the `reaction-simulator` or `manifold-compressor` to resolve the recorded constraint.

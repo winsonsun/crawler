@@ -106,17 +106,18 @@ class GeminiOmniSolver(BaseOmniSolver):
         image_bytes = base64.b64decode(screenshot_base64)
         
         prompt = (
-            "You are an expert at solving complex anti-bot mechanisms, knowledge-based CAPTCHAs (like the China Driver License exam questions), and navigating web interfaces. "
+            "You are an expert at solving complex anti-bot mechanisms, knowledge-based CAPTCHAs, and navigating web interfaces. "
             "Your persona is 'The Logical Auditor' who can solve any visual or text-based challenge. "
             "Examine the provided screenshot and HTML context of a web page. "
             "Your task is to determine the best next step to take: "
-            "1. If it is an automatic verification (e.g., Cloudflare 'Verifying you are human' or Turnstile), return action='wait'. "
-            "2. If it is a multiple choice question (e.g. 'Which of these is a car?'), a checkbox (e.g. 'I am 18'), or a button to click (e.g. 'Confirm', 'Enter'), return action='click' and provide the 'target_text' and 'target_selector'. "
-            "   Choose the LOGICALLY CORRECT answer if a question is asked. For checkboxes, prioritize checking them before clicking the main button. "
+            "1. If it is an automatic verification with NO interactive elements (e.g., just 'Verifying you are human' text with no checkbox), return action='wait'. "
+            "2. If you see a Cloudflare Turnstile checkbox (often looks like a small box with 'Verify you are human'), or any other checkbox/button (e.g. 'I am 18', 'Confirm', 'Enter'), return action='click'. "
+            "   For Cloudflare Turnstile, provide target_text='Verify you are human' or a relevant selector if you can deduce it. "
+            "   Choose the LOGICALLY CORRECT answer if a multiple choice question is asked. "
             "3. If you see a prominent search input field on a landing page, return action='search' and provide 'search_input_selector' and 'search_button_selector'. "
             "4. If the page is already at its target (e.g. shows movie lists, movie details, or is clearly the home page), return action='solved'. "
             "5. Otherwise, return action='failed'. "
-            "Include your reasoning, specifically explaining why you chose a particular target if it was a question. "
+            "Include your reasoning, specifically explaining why you chose a particular target. "
             "Return the solution matching the provided JSON schema."
         )
 
